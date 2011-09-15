@@ -1,0 +1,6 @@
+This git repository houses some of the code being developed by me (Seth Gilchrist) in the course of my PhD.
+
+It is designed to run on a linux machine and requires:
+
+ITK V3.20+
+VTK V5.4+
