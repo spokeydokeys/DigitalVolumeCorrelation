@@ -1,4 +1,4 @@
-//      Test.cxx
+//      AnalyzeImages.cxx
 //      
 //      Copyright 2011 Seth Gilchrist <seth@mech.ubc.ca>
 //      
@@ -143,8 +143,7 @@ int main(int argc, char **argv)
 	//~ vtkReader->SetFileName( argv[3] );
 	//~ vtkReader->Update();
 	//~ DICMethod->SetDataImage( vtkReader->GetOutput() );
-	
-	
+		
 	DICMethod->ReadMeshFromGmshFile( argv[3] );
 	msg.str("");
 	msg << "Images in memory."<<std::endl;
@@ -193,90 +192,12 @@ int main(int argc, char **argv)
 	// radius of convergence and speeds things up.
 	optimizer->SetMaximumStepLength(.5); // large steps for the global registration (based on visual alignment in ParaView)
 	optimizer->SetMinimumStepLength(0.041); // low tolerance for the global registration
-
-	{ // scoping the down-sampling will make the Shrink filters be automatically distroyed (freeing memory)
-		typedef itk::ShrinkImageFilter< FixedImageType, FixedImageType > ResamplerType;
-		ResamplerType::Pointer	fixedResampler = ResamplerType::New();
-		ResamplerType::Pointer	movingResampler = ResamplerType::New();		
-		fixedResampler->SetInput( fixedReader->GetOutput() );
-		movingResampler->SetInput( movingReader->GetOutput() );
-		fixedResampler->SetShrinkFactors(3);
-		movingResampler->SetShrinkFactors(3);
-		fixedResampler->SetNumberOfThreads(8);
-		movingResampler->SetNumberOfThreads(8);
-		msg.str("");
-		msg <<"Resampling for global registration"<<std::endl<<std::endl;
-		DICMethod->WriteToLogfile(msg.str());
-		fixedResampler->Update();
-		movingResampler->Update();
-		// global registration - rotation is centred on the body
-		registration->SetFixedImage( fixedResampler->GetOutput() );
-		registration->SetMovingImage( movingResampler->GetOutput() );
-		MovingImageType::PointType	movingOrigin = movingResampler->GetOutput()->GetOrigin();
-		MovingImageType::SpacingType movingSpacing = movingResampler->GetOutput()->GetSpacing();
-		MovingImageType::SizeType	movingSize = movingResampler->GetOutput()->GetLargestPossibleRegion().GetSize();
-		MovingImageType::PointType	centerPt;
-		centerPt[0] = movingOrigin[0] + movingSpacing[0]*(movingSize[0] >> 2);
-		centerPt[1] = movingOrigin[1] + movingSpacing[1]*(movingSize[1] >> 2);
-		centerPt[2] = movingOrigin[2] + movingSpacing[2]*(movingSize[2] >> 2);
-		ParametersType initalParams = registration->GetInitialTransformParameters();
-		initialParameters[3] = centerPt[0];
-		initialParameters[4] = centerPt[1];
-		initialParameters[5] = centerPt[2];
-		registration->SetInitialTransformParameters( initialParameters );
-		// restrict the Global registration to just the bounding box of the mesh
-		double *meshBBox = new double[6];
-		meshBBox = DICMethod->GetDataImage()->GetBounds();
-		FixedImageType::PointType meshMinPt;
-		meshMinPt[0] = *meshBBox;
-		meshMinPt[1] = *(meshBBox+2);
-		meshMinPt[2] = *(meshBBox+4);
-		double meshSize[3];
-		meshSize[0] = *(meshBBox+1)-*meshBBox;
-		meshSize[1] = *(meshBBox+3)-*(meshBBox+2);
-		meshSize[2] = *(meshBBox+5)-*(meshBBox+4);
-		FixedImageType::IndexType fixedImageROIStart;
-		fixedResampler->GetOutput()->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart);
-		FixedImageType::SpacingType fixedSpacing = fixedResampler->GetOutput()->GetSpacing();
-		FixedImageType::SizeType fixedImageROILengths;
-		fixedImageROILengths[0] = (int)std::floor(meshSize[0]/fixedSpacing[0]);
-		fixedImageROILengths[1] = (int)std::floor(meshSize[1]/fixedSpacing[1]);
-		fixedImageROILengths[2] = (int)std::floor(meshSize[2]/fixedSpacing[2]);
-		FixedImageType::RegionType fixedAnalysisRegion;
-		fixedAnalysisRegion.SetIndex( fixedImageROIStart );
-		fixedAnalysisRegion.SetSize( fixedImageROILengths );
-		registration->SetFixedImageRegion( fixedAnalysisRegion );
-		registration->SetFixedImageRegionDefined( true );
-		msg.str("");
-		msg << "Global registration in progress"<<std::endl<<std::endl;
-		DICMethod->WriteToLogfile( msg.str() );
-		registration->Update();
-		registration->SetFixedImageRegionDefined( false );
-	}
+	DICMethod->GlobalRegistration();
 	
-	msg.str("");
-	msg << "Global Registration complete."<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	
-	double *globalRegResults = new double[3];
-	ParametersType	finalParameters = registration->GetLastTransformParameters();
-	msg.str("");
-	msg << "Final Params:"<< finalParameters<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	*globalRegResults = finalParameters[6];
-	*(globalRegResults + 1) = finalParameters[7];
-	*(globalRegResults + 2) = finalParameters[8];	
-	
-	msg.str("");
-	msg << "Global registration finished.\n Resulting displacement: ("<<*globalRegResults<<
-		", "<<*(globalRegResults+1)<<", "<<*(globalRegResults+2)<<")"<<std::endl<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	
+	// speed things us for the actual registration
 	optimizer->SetMaximumStepLength( 0.041 ); // smaller steps for the DIC
 	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
-	DICMethod->SetMeshInitialValue( globalRegResults );
-	DICMethod->SetRegistrationMethod( registration );
-	
+
 	//~ {
 		//~ 
 		//~ DICMethod->CalculateInitialFixedImageRegionList();

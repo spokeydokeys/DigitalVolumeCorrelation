@@ -37,6 +37,7 @@
 #include "itkTranslationTransform.h"
 #include "itkLinearInterpolateImageFunction.h"
 #include "itkCenteredEuler3DTransform.h"
+#include <itkCenteredTransformInitializer.h>
 
 
 template <typename TFixedImage, typename TMovingImage>
@@ -102,7 +103,8 @@ typedef	typename	TransformType::Pointer										TransformTypePointer;
 typedef itk::LinearInterpolateImageFunction< MovingImageType, double >			InterpolatorType;
 typedef typename	InterpolatorType::Pointer									InterpolatorTypePointer;
 
-
+typedef itk::CenteredTransformInitializer<TransformType,FixedImageType,MovingImageType>	TransformInitializerType;
+typedef typename	TransformInitializerType::Pointer							TransformInitializerTypePointer;
 
 /** Methods **/
 /** Constructor **/
@@ -133,6 +135,7 @@ DIC()
 	m_Registration->SetInterpolator( m_Interpolator );
 	m_Registration->SetOptimizer( m_Optimizer );
 	m_Registration->SetMetric( m_Metric );
+	m_TranformInitializer	= TransformInitializerType::New();
 
 }
 
@@ -730,6 +733,7 @@ MetricTypePointer					m_Metric;
 OptimizerTypePointer				m_Optimizer;
 TransformTypePointer				m_Transform;
 InterpolatorTypePointer				m_Interpolator;
+TransformInitializerTypePointer		m_TranformInitializer;
 
 std::string							m_LogfileName;
 std::string							m_OutputDirectory;

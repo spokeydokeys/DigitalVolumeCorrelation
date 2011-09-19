@@ -46,6 +46,7 @@
 #include <vtkImageData.h>
 
 #include <itkImageFileWriter.h>
+#include <itkShrinkImageFilter.h>
 
 
 template<typename TFixedImage, typename TMovingImage>
@@ -65,6 +66,11 @@ typedef typename DIC<TFixedImage,TMovingImage>::MovingImageRegionType		MovingIma
 typedef typename DIC<TFixedImage,TMovingImage>::FixedImageRegionListType	FixedImageRegionListType;
 typedef	typename DIC<TFixedImage,TMovingImage>::MovingImageRegionListType	MovingImageRegionListType;
 
+typedef typename DIC<TFixedImage,TMovingImage>::ImageRegistrationMethodType	ImageRegistrationType;
+typedef typename ImageRegistrationType::ParametersType							RegistrationParametersType;	
+typedef typename DIC<TFixedImage,TMovingImage>::TransformInitializerType	TransformInitializerType;
+typedef typename DIC<TFixedImage,TMovingImage>::TransformType				TransformType;
+
 typedef		vtkSmartPointer<vtkUnstructuredGrid>	DataImagePointer;
 typedef		vtkSmartPointer<vtkPoints>				DataImagePointsPointer;
 typedef		vtkSmartPointer<vtkDoubleArray>			DataImagePixelPointer;
@@ -82,6 +88,7 @@ DICMesh()
 	m_errorTolerance = 1.5; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
 	m_maxMeticValue = -0.85; // TODO: make this setable using a method
+	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
 }
 
 /** Destructor **/
@@ -317,7 +324,7 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 }
 
 /** A function to fill a mesh with an single value. */
-void SetMeshInitialValue( double *initialData )
+void SetMeshInitialValue( double initialData[] )
 {
 	vtkSmartPointer<vtkDataArray> pointData = this->m_DataImage->GetPointData()->GetArray("Displacement"); // get the data array by name
 	vtkIdType numberOfNodes = pointData->GetNumberOfTuples();
@@ -450,13 +457,18 @@ void ExecuteDIC()
 		
 		this->SetTransformToIdentity();
 		
+		this->m_TranformInitializer->SetFixedImage( this->m_Registration->GetFixedImage() );
+		this->m_TranformInitializer->SetMovingImage( this->m_Registration->GetMovingImage() );
+		this->m_TranformInitializer->SetTransform( this->m_Transform );
+		this->m_TranformInitializer->InitializeTransform();	
+			
 		double	*displacementData = new double[3];
 		this->GetMeshPixelValueFromIndex( pointId, displacementData );
-		this->SetInitialDisplacement( displacementData );		
-
-		double	*centerLocation = new double[3];
-		this->GetMeshPointLocationFromIndex( pointId, centerLocation );
-		this->SetRotationCenter( centerLocation );
+		this->SetInitialDisplacement( displacementData );
+		
+		//~ double	*centerLocation = new double[3];
+		//~ this->GetMeshPointLocationFromIndex( pointId, centerLocation );
+		//~ this->SetRotationCenter( centerLocation );
 		
 			//~ itk::ImageFileWriter< itk::Image< short, 3> >::Pointer fixedWriter = itk::ImageFileWriter< FixedImageType >::New();
 			//~ 
@@ -562,16 +574,11 @@ void CreateNewRegionListFromBadPixels()
 			*movingImageCenterLocation = *currentPointLocation + *averageValue;
 			*(movingImageCenterLocation+1) = *(currentPointLocation+1) + *(averageValue+1);
 			*(movingImageCenterLocation+2) = *(currentPointLocation+2) + *(averageValue+2);
-			
-			this->GetMovingImageRegionFromLocation( currentMovingRegion, movingImageCenterLocation ); //currentPointLocation );
+			this->GetMovingImageRegionFromLocation( currentMovingRegion, movingImageCenterLocation );
 			this->PushRegionOntoMovingImageRegionList( currentMovingRegion );
 			
 			FixedImageRegionType *currentFixedRegion = new FixedImageRegionType;  // New Fixed Region
-			//~ double *fixedImageCenterLocation = new double[3];
-			//~ *fixedImageCenterLocation = *currentPointLocation + *averageValue;
-			//~ *(fixedImageCenterLocation+1) = *(currentPointLocation+1) + *(averageValue+1);
-			//~ *(fixedImageCenterLocation+2) = *(currentPointLocation+2) + *(averageValue+2);
-			this->GetFixedImageRegionFromLocation( currentFixedRegion, currentPointLocation );//fixedImageCenterLocation );
+			this->GetFixedImageRegionFromLocation( currentFixedRegion, currentPointLocation );
 			this->PushRegionOntoFixedImageRegionList( currentFixedRegion );
 			this->m_pointsList->InsertNextId( i );
 			
@@ -842,6 +849,98 @@ void MedianImageFilter(unsigned int N)
 	}
 }
 
+/** This function will use the image registration method from DIC to 
+ * align the images in the region bounded by m_DataImage's bounding box.*/
+void GlobalRegistration()
+{
+	// Use an ShrinkImageFilter to blur and downsample fixed and moving images to improve radius of convergance
+	typedef itk::ShrinkImageFilter< FixedImageType, FixedImageType > FixedResamplerType;
+	typedef itk::ShrinkImageFilter< MovingImageType, MovingImageType > MovingResamplerType;
+	
+	typename FixedResamplerType::Pointer	fixedResampler = FixedResamplerType::New();
+	typename MovingResamplerType::Pointer	movingResampler = MovingResamplerType::New();		
+	fixedResampler->SetInput( this->m_FixedImage );
+	movingResampler->SetInput( this->m_MovingImage );
+	fixedResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
+	movingResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
+	fixedResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
+	movingResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
+	std::stringstream msg("");
+	msg <<"Resampling for global registration"<<std::endl<<std::endl;
+	this->WriteToLogfile(msg.str());
+	fixedResampler->Update();
+	movingResampler->Update();
+	
+	// global registration - rotation is centred on the body
+	this->m_Registration->SetFixedImage( fixedResampler->GetOutput() );
+	this->m_Registration->SetMovingImage( movingResampler->GetOutput() );
+	this->m_TranformInitializer->SetFixedImage( fixedResampler->GetOutput() );
+	this->m_TranformInitializer->SetMovingImage( movingResampler->GetOutput() );
+	this->m_TranformInitializer->SetTransform( this->m_Transform );
+	
+	// restrict the Global registration to just the bounding box of the mesh
+	double meshBBox[6];// = new double[6];
+	this->m_DataImage->GetBounds( meshBBox );
+	typename FixedImageType::PointType meshMinPt; // Get mesh minimum pt - this will be used for the registration region start index 
+	meshMinPt[0] = meshBBox[0];
+	meshMinPt[1] = meshBBox[2];
+	meshMinPt[2] = meshBBox[4];
+	double meshSize[3]; 				// Get mesh dimension - this will be used for the registration size
+	meshSize[0] = meshBBox[1]-meshBBox[0];
+	meshSize[1] = meshBBox[3]-meshBBox[2];
+	meshSize[2] = meshBBox[5]-meshBBox[4];
+	
+	typename FixedImageType::IndexType fixedImageROIStart;
+	fixedResampler->GetOutput()->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart); // convert min point to start index
+	
+	typename FixedImageType::SpacingType fixedSpacing = fixedResampler->GetOutput()->GetSpacing(); // convert dimensinos to size in pixels
+	typename FixedImageType::SizeType fixedImageROILengths;
+	fixedImageROILengths[0] = (int)std::floor(meshSize[0]/fixedSpacing[0]);
+	fixedImageROILengths[1] = (int)std::floor(meshSize[1]/fixedSpacing[1]);
+	fixedImageROILengths[2] = (int)std::floor(meshSize[2]/fixedSpacing[2]);
+	typename FixedImageType::RegionType fixedAnalysisRegion;
+	fixedAnalysisRegion.SetIndex( fixedImageROIStart );
+	fixedAnalysisRegion.SetSize( fixedImageROILengths );
+	this->m_Registration->SetFixedImageRegion( fixedAnalysisRegion ); // set the limited analysis region
+	
+	this->m_Registration->SetFixedImageRegionDefined( true );
+	msg.str("");
+	msg << "Global registration in progress"<<std::endl<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	this->m_Registration->Update();
+	this->m_Registration->SetFixedImageRegionDefined( false );
+	
+	msg.str("");
+	msg << "Global Registration complete."<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	
+	
+	double globalRegResults[3];// = new double[3];
+	RegistrationParametersType	finalParameters = this->m_Registration->GetLastTransformParameters();
+	msg.str("");
+	msg << "Final Params:"<< finalParameters<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	globalRegResults[0] = finalParameters[6];
+	globalRegResults[1] = finalParameters[7];
+	globalRegResults[2] = finalParameters[8];	
+	
+	msg.str("");
+	msg << "Global registration finished.\n Resulting displacement: ("<<globalRegResults[0]<<
+		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	
+	this->SetMeshInitialValue( globalRegResults );
+}
+
+/** A function to set the downsample value used by the global registration.
+ * The default value is 3. */
+void SetGlobalRegistrationDownsampleValue( unsigned int value )
+{
+	if (m_GlobalRegDownsampleValue != value){
+		this->m_GlobalRegDownsampleValue = value;
+	}
+}
+
 /** A function to set the error tolerance in units of standard deviations 
  * from the average of the pixels in the error radius. */
 void SetErrorTolerance(double tolerance)
@@ -863,6 +962,8 @@ double						m_errorRadius;
 double						m_errorTolerance;
 double_t					m_maxMeticValue; // this because I'm using the normalized x-correlation coefficient metric
 vtkSmartPointer<vtkIdList>	m_pointsList;
+RegistrationParametersType	m_GlobalRegistrationParameters;
+unsigned int				m_GlobalRegDownsampleValue;
 	
 }; // end class DICMesh
 
