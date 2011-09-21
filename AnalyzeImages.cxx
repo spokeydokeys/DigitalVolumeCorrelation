@@ -176,9 +176,9 @@ int main(int argc, char **argv)
 	// and it is more sensitive.  Use rotation values 3% of the translations.
 	typedef DICType::OptimizerType::ScalesType		OptimizerScalesType;
 	OptimizerScalesType optScales( transform->GetNumberOfParameters() );	// optimizer scales must be chosen carefully.  These were based off of
-	optScales[0] = 10;														// prelininary tests on my data.  There is some help on the ITK wiki
-	optScales[1] = 10;														// for defining them:
-	optScales[2] = 10;														// http://www.vtk.org/Wiki/ITK/ImageRegistration#Optimizers_2
+	optScales[0] = 100;														// prelininary tests on my data.  There is some help on the ITK wiki
+	optScales[1] = 100;														// for defining them:
+	optScales[2] = 100;														// http://www.vtk.org/Wiki/ITK/ImageRegistration#Optimizers_2
 	optScales[3] = .05;
 	optScales[4] = .05;
 	optScales[5] = .05;
@@ -190,7 +190,7 @@ int main(int argc, char **argv)
 	// global registration is in-exact and only gives an estimate for 
 	// the rest of the DIC.  Using a downsampled image increases the 
 	// radius of convergence and speeds things up.
-	optimizer->SetMaximumStepLength(.5); // large steps for the global registration (based on visual alignment in ParaView)
+	optimizer->SetMaximumStepLength(.1); // large steps for the global registration (based on visual alignment in ParaView)
 	optimizer->SetMinimumStepLength(0.041); // low tolerance for the global registration
 	DICMethod->GlobalRegistration();
 	

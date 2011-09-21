@@ -457,10 +457,11 @@ void ExecuteDIC()
 		
 		this->SetTransformToIdentity();
 		
-		this->m_TranformInitializer->SetFixedImage( this->m_Registration->GetFixedImage() );
-		this->m_TranformInitializer->SetMovingImage( this->m_Registration->GetMovingImage() );
-		this->m_TranformInitializer->SetTransform( this->m_Transform );
-		this->m_TranformInitializer->InitializeTransform();	
+		this->m_TransformInitializer->SetFixedImage( this->m_Registration->GetFixedImage() );
+		this->m_TransformInitializer->SetMovingImage( this->m_Registration->GetMovingImage() );
+		this->m_TransformInitializer->SetTransform( this->m_Transform );
+		this->m_TransformInitializer->InitializeTransform();
+		this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
 			
 		double	*displacementData = new double[3];
 		this->GetMeshPixelValueFromIndex( pointId, displacementData );
@@ -874,9 +875,12 @@ void GlobalRegistration()
 	// global registration - rotation is centred on the body
 	this->m_Registration->SetFixedImage( fixedResampler->GetOutput() );
 	this->m_Registration->SetMovingImage( movingResampler->GetOutput() );
-	this->m_TranformInitializer->SetFixedImage( fixedResampler->GetOutput() );
-	this->m_TranformInitializer->SetMovingImage( movingResampler->GetOutput() );
-	this->m_TranformInitializer->SetTransform( this->m_Transform );
+	this->m_TransformInitializer->SetFixedImage( fixedResampler->GetOutput() );
+	this->m_TransformInitializer->SetMovingImage( movingResampler->GetOutput() );
+	this->m_TransformInitializer->SetTransform( this->m_Transform );
+	this->m_TransformInitializer->GeometryOn();
+	this->m_TransformInitializer->InitializeTransform();
+	this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
 	
 	// restrict the Global registration to just the bounding box of the mesh
 	double meshBBox[6];// = new double[6];
@@ -889,7 +893,7 @@ void GlobalRegistration()
 	meshSize[0] = meshBBox[1]-meshBBox[0];
 	meshSize[1] = meshBBox[3]-meshBBox[2];
 	meshSize[2] = meshBBox[5]-meshBBox[4];
-	
+		
 	typename FixedImageType::IndexType fixedImageROIStart;
 	fixedResampler->GetOutput()->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart); // convert min point to start index
 	
@@ -902,6 +906,11 @@ void GlobalRegistration()
 	fixedAnalysisRegion.SetIndex( fixedImageROIStart );
 	fixedAnalysisRegion.SetSize( fixedImageROILengths );
 	this->m_Registration->SetFixedImageRegion( fixedAnalysisRegion ); // set the limited analysis region
+	
+	std::cout<<"Mesh bounding box: ("<<meshBBox[0]<<", "<<meshBBox[1]<<", "<<meshBBox[2]<<", "<<meshBBox[3]<<", "<<meshBBox[4]<<", "<<meshBBox[5]<<")"<<std::endl;
+	std::cout<<"Image spacing: ("<<fixedSpacing[0]<<", "<<fixedSpacing[1]<<", "<<fixedSpacing[2]<<")"<<std::endl;
+	std::cout<<"Fixed Image analysis region: "<<fixedAnalysisRegion<<std::endl;
+	std::cout<<"Fixed Image Region: "<<this->m_Registration->GetFixedImage()->GetLargestPossibleRegion()<<std::endl;
 	
 	this->m_Registration->SetFixedImageRegionDefined( true );
 	msg.str("");

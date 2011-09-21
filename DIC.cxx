@@ -135,7 +135,7 @@ DIC()
 	m_Registration->SetInterpolator( m_Interpolator );
 	m_Registration->SetOptimizer( m_Optimizer );
 	m_Registration->SetMetric( m_Metric );
-	m_TranformInitializer	= TransformInitializerType::New();
+	m_TransformInitializer	= TransformInitializerType::New();
 
 }
 
@@ -733,7 +733,7 @@ MetricTypePointer					m_Metric;
 OptimizerTypePointer				m_Optimizer;
 TransformTypePointer				m_Transform;
 InterpolatorTypePointer				m_Interpolator;
-TransformInitializerTypePointer		m_TranformInitializer;
+TransformInitializerTypePointer		m_TransformInitializer;
 
 std::string							m_LogfileName;
 std::string							m_OutputDirectory;
