@@ -85,9 +85,9 @@ DICMesh()
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
 	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
-	m_errorTolerance = 1.5; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
+	m_errorTolerance = .8; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
-	m_maxMeticValue = -0.85; // TODO: make this setable using a method
+	m_maxMeticValue = -0.80; // TODO: make this setable using a method
 	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
 }
 
