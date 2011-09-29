@@ -262,12 +262,10 @@ void GetMovingImageRegionFromLocation( MovingImageRegionType *region, double *ce
 	
 	region->SetSize(regionSize); // set the parameters of the region
 	region->SetIndex(startIndex);
-	//std::cout<<"Moving region: "<<*region<<std::endl;
 	if ( !this->IsMovingRegionValid( region) ) // if the region is invalid, change the parameters
 	{
 		
 		this->FixImageRegion( region, m_MovingImage );
-		//std::cout<<"Fixed moving region: "<<*region<<std::endl;
 	}
 }
  
@@ -289,19 +287,16 @@ void GetFixedImageRegionFromLocation( FixedImageRegionType *region, double *cent
 	
 	region->SetSize(regionSize); // set the parameters of the region
 	region->SetIndex(startIndex);
-	//std::cout<<"Fixed region: "<<*region<<std::endl;
 	if ( !this->IsFixedRegionValid( region ) ) // if the region is invalid, change the parameters
 	{
 		
 		this->FixImageRegion( region, m_FixedImage );
-		//std::cout<<"Fixed fixed region: "<<*region<<std::endl;
 	}
 }
 
 /** This funciton will determine if a given fixed image region is valid.*/
 bool IsFixedRegionValid( FixedImageRegionType *region )
 {
-	//~ return this->m_FixedImage->GetLargestPossibleRegion().IsInside( *region );
 	typename FixedImageRegionType::SizeType	size = region->GetSize();
 	if( !this->m_FixedImage->GetLargestPossibleRegion().IsInside( *region ) || size[0] < 4 || size[1] < 4 || size[2] < 4){
 		return false;
@@ -313,7 +308,6 @@ bool IsFixedRegionValid( FixedImageRegionType *region )
 /** This function will determine if a given moving image region is valid. */
 bool IsMovingRegionValid( MovingImageRegionType *region )
 {
-	//~ return this->m_MovingImage->GetLargestPossibleRegion().IsInside( *region );
 	typename FixedImageRegionType::SizeType	size = region->GetSize();
 	if( !this->m_MovingImage->GetLargestPossibleRegion().IsInside( *region ) || size[0] < 4 || size[1] < 4 || size[2] < 4){
 		return false;
@@ -322,88 +316,8 @@ bool IsMovingRegionValid( MovingImageRegionType *region )
 	return true;	
 }
 
-//~ /** This function will modify a fixed image region to make it valid.*/
-//~ void FixFixedImageRegion( FixedImageRegionType *region )
-//~ {
-	//~ FixedImageRegionType						fixedImageRegion		= this->m_FixedImage->GetLargestPossibleRegion();	
-	//~ typename FixedImageRegionType::IndexType	fixedImageRegionIndex 	= fixedImageRegion.GetIndex();
-	//~ typename FixedImageRegionType::SizeType		fixedImageRegionSize 	= fixedImageRegion.GetSize();
-	//~ unsigned int								fixedImageDimension 	= this->m_FixedImage->GetImageDimension();
-	//~ 
-	//~ typename FixedImageRegionType::SizeType		regionSize				= region->GetSize();
-	//~ typename FixedImageRegionType::IndexType	regionIndex				= region->GetIndex();
-	//~ 
-	//~ for (unsigned int i = 0; i<fixedImageDimension; ++i)
-	//~ {
-		//~ if ( regionIndex[i] < fixedImageRegionIndex[i] ) // if region starts before the image
-		//~ {
-			//~ regionSize[i] = regionSize[i] - (fixedImageRegionIndex[i] - regionIndex[i]); // change size to that inside the image
-			//~ regionIndex[i] = fixedImageRegionIndex[i]; // change the index to the start of the image
-			//~ regionSize[i] > m_FixedIRMult*m_IRRadius ?  : regionSize[i] = m_FixedIRMult*m_IRRadius; // the gaussian filter used in interpolation needs >= 4 in each direction.
-		//~ }
-		//~ if ( regionIndex[i]  > (int)(fixedImageRegionIndex[i] + fixedImageRegionSize[i]) ) // if the region starts after the image finishes, throw a warning and use the closest part of the image.
-		//~ {
-			//~ std::stringstream msg("");
-			//~ msg<<"Warning: The fixed image region starts after the end of the moving image.  Using closest valid region."<<std::endl<<"Index: ["<<regionIndex[0]<<", "<<regionIndex[1]<<", "<<regionIndex[2]<<"]"<<std::endl<<"Size: ["<<regionSize[0]<<", "<<regionSize[1]<<", "<<regionSize[2]<<"]"<<std::endl;
-			//~ regionIndex[i] = fixedImageRegionSize[i] - (m_FixedIRMult*m_IRRadius+1);
-			//~ regionSize[i] = m_FixedIRMult*m_IRRadius;
-		//~ }
-		//~ if ( (regionIndex[i] + regionSize[i]) > (fixedImageRegionIndex[i] + fixedImageRegionSize[i]) ) // if the region finishes after the image
-		//~ {
-			//~ regionSize[i] = (fixedImageRegionIndex[i] + fixedImageRegionSize[i]) - (regionIndex[i]+1); // change size to that inside the image
-			//~ if (regionSize[i] < m_FixedIRMult*m_IRRadius){
-				//~ regionIndex[i] = fixedImageRegionSize[i] - (m_FixedIRMult*m_IRRadius+1);
-				//~ regionSize[i] = m_FixedIRMult*m_IRRadius;
-			//~ } // the gaussian filter used in interpolation needs >= 4 in each direction, index is 0 referenced, so needs -5
-		//~ }
-		//~ 
-	//~ }
-	//~ 
-	//~ region->SetSize( regionSize );
-	//~ region->SetIndex( regionIndex );
-//~ }
-//~ 
-//~ /** This function will modify a moving image region to make it valid.*/
-//~ void FixMovingImageRegion( MovingImageRegionType *region )
-//~ {
-	//~ MovingImageRegionType						movingImageRegion		= this->m_MovingImage->GetLargestPossibleRegion();
-	//~ typename MovingImageRegionType::IndexType	movingImageRegionIndex	= movingImageRegion.GetIndex();
-	//~ typename MovingImageRegionType::SizeType	movingImageRegionSize	= movingImageRegion.GetSize();
-	//~ unsigned int								movingImageDimension	= this->m_MovingImage->GetImageDimension();
-	//~ 
-	//~ typename MovingImageRegionType::SizeType	regionSize 				= region->GetSize();
-	//~ typename MovingImageRegionType::IndexType	regionIndex				= region->GetIndex();
-	//~ 
-	//~ for (unsigned int i = 0; i<movingImageDimension; ++i)
-	//~ {
-		//~ if ( regionIndex[i] < movingImageRegionIndex[i] ) // if region starts before the image
-		//~ {
-			//~ regionSize[i] = regionSize[i]-(movingImageRegionIndex[i]-regionIndex[i])>m_IRRadius ? regionSize[i]-(movingImageRegionIndex[i]-regionIndex[i]) : m_IRRadius; // change size to that inside the image, but use at least the perscribed IRRadius
-			//~ regionIndex[i] = movingImageRegionIndex[i]; // change the index to the start of the image
-			//~ regionSize[i] = regionSize[i] > m_IRRadius ? : regionSize[i] = m_IRRadius; // the gaussian filter used in interpolation needs >= 4 in each direction.
-		//~ }
-		//~ if ( regionIndex[i] > (int)(movingImageRegionIndex[i] + movingImageRegionSize[i]) ) // if the region starts after the image finishes, throw a warning and use the closest part of the image.
-		//~ {
-			//~ std::stringstream msg("");
-			//~ msg<<"Warning: The moving image region starts after the end of the moving image.  Using closest valid region."<<std::endl<<"Index: ["<<regionIndex[0]<<", "<<regionIndex[1]<<", "<<regionIndex[2]<<"]"<<std::endl<<"Size: ["<<regionSize[0]<<", "<<regionSize[1]<<", "<<regionSize[2]<<"]"<<std::endl;
-			//~ regionIndex[i] = movingImageRegionSize[i] - (m_IRRadius+1);
-			//~ regionSize[i] = m_IRRadius;
-		//~ }		
-		//~ if ( (regionIndex[i] + regionSize[i]) > (movingImageRegionIndex[i] + movingImageRegionSize[i]) ) // if the region finishes after the image
-		//~ {
-			//~ regionSize[i] = (movingImageRegionIndex[i] + movingImageRegionSize[i]) - (regionIndex[i]+1); // change size to that inside the image
-			//~ if (regionSize[i] < m_IRRadius){
-				//~ regionIndex[i] = movingImageRegionSize[i] - (m_IRRadius+1);
-				//~ regionSize[i] = m_IRRadius;
-			//~ } // the gaussian filter used in interpolation needs >= 4 in each direction, index is 0 referenced, so needs -5
-		//~ }
-//~ 
-	//~ }
-	//~ region->SetSize( regionSize );
-	//~ region->SetIndex( regionIndex );
-//~ }
-
-/** This function will modify a moving image region to make it valid.*/
+/** This function will modify a moving image region to make it valid.
+ * Assumes that the fixed and moving images are of the same type. */
 void FixImageRegion( MovingImageRegionType *region, MovingImageConstPointer image )
 {
 	MovingImageRegionType						movingImageRegion		= image->GetLargestPossibleRegion();

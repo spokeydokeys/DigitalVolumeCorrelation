@@ -467,38 +467,6 @@ void ExecuteDIC()
 		this->GetMeshPixelValueFromIndex( pointId, displacementData );
 		this->SetInitialDisplacement( displacementData );
 		
-		//~ double	*centerLocation = new double[3];
-		//~ this->GetMeshPointLocationFromIndex( pointId, centerLocation );
-		//~ this->SetRotationCenter( centerLocation );
-		
-			//~ itk::ImageFileWriter< itk::Image< short, 3> >::Pointer fixedWriter = itk::ImageFileWriter< FixedImageType >::New();
-			//~ 
-			//~ itk::ImageFileWriter< itk::Image< short, 3> >::Pointer movingWriter = itk::ImageFileWriter< MovingImageType >::New();
-			//~ 
-			//~ typedef itk::ImageFileWriter< FixedImageType >	FixedWriterType;
-			//~ typedef itk::ImageFilewriter< MovingImageType >	MovingWriterType;
-			//~ 
-			//~ FixedWriterType::Pointer fixedWriter = FixedWriterType::New();
-			//~ MovingWriterType::Pointer movingWriter = MovingWriterType::New();
-			//~ 
-			//~ std::stringstream fixedName("");
-			//~ fixedName << "/home/seth/Desktop/FixedImages/fixedImage_"<<i<<".mha";
-			//~ fixedWriter->SetFileName( fixedName.str() );
-			//~ fixedWriter->SetInput( fixedImage );
-			//~ 
-			//~ std::stringstream movingName("");
-			//~ movingName << "/home/seth/Desktop/MovingImages/movingImage_"<<i<<".mha";
-			//~ movingWriter->SetFileName( movingName.str() );
-			//~ movingWriter->SetInput( movingImage );
-			//~ 
-			//~ fixedWriter->Update();
-			//~ std::cout<<"Fixed image written to "<<fixedName.str()<<std::endl;
-			//~ movingWriter->Update();
-			//~ std::cout<<"Moving image written to "<<movingName.str()<<std::endl;
-			//~ 
-			//~ std::cout<<"Fixed Image: "<<fixedImage<<std::endl;
-			//~ std::cout<<"Moving Image: "<<movingImage<<std::endl;
-		
 		msg.str("");
 		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
 		this->WriteToLogfile( msg.str() );
