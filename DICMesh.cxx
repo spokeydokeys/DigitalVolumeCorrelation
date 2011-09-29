@@ -555,7 +555,7 @@ void CreateNewRegionListFromBadPixels()
 		double *averageMag = new double;
 		double *stDevValue = new double[3];
 		double *stDevMag = new double;
-		this->CalculateStats( pointList, averageValue, averageMag, stDevValue, stDevMag );
+		this->CalculateStats(i, pointList, averageValue, averageMag, stDevValue, stDevMag );
 		// get the value of the current point
 		double *currentValue = new double[3];
 		this->GetMeshPixelValueFromIndex( i, currentValue );
@@ -590,7 +590,7 @@ void CreateNewRegionListFromBadPixels()
 
 /** A function to calcluate the component and mangnitued averages of point
  * values from a list of point IDs. **/ 
-void CalculateStats( vtkSmartPointer<vtkIdList> points, double *vectorAverage, double *magAverage, double *vectorStDev, double *magStDev)
+void CalculateStats(vtkIdType c_point, vtkSmartPointer<vtkIdList> points, double *vectorAverage, double *magAverage, double *vectorStDev, double *magStDev)
 {
 	unsigned int nPoints = points->GetNumberOfIds();
 	*vectorAverage = 0;
@@ -603,6 +603,7 @@ void CalculateStats( vtkSmartPointer<vtkIdList> points, double *vectorAverage, d
 	*magStDev = 0;
 	for( unsigned int i = 0; i < nPoints; ++i){
 		vtkIdType pointId = points->GetId( i );
+		if ( pointId == c_point) continue; // don't include the current point in the average.
 		double *cPoint = new double[3];
 		this->m_DataImage->GetPointData()->GetArray("Displacement")->GetTuple( pointId, cPoint );
 		
@@ -617,7 +618,7 @@ void CalculateStats( vtkSmartPointer<vtkIdList> points, double *vectorAverage, d
 	*(vectorAverage+1) = *(vectorAverage+1)/nPoints;
 	*(vectorAverage+2) = *(vectorAverage+2)/nPoints;
 	
-	*magAverage = *magAverage/nPoints;
+	*magAverage = *magAverage/nPoints-1;
 	
 	double vectDiff[3] = {0, 0, 0};
 	double magDiff = 0;
@@ -670,29 +671,70 @@ void GetPrincipalStrains()
 	vtkSmartPointer<vtkMath>		mathAlgorithm = vtkSmartPointer<vtkMath>::New();
 	// First find the principal strains for the point data
 	vtkIdType nPoints = this->m_DataImage->GetPointData()->GetArray("Strain")->GetNumberOfTuples();
+	DataImagePixelPointer V0;
+	DataImagePixelPointer V1;
+	DataImagePixelPointer V2;
+	DataImagePixelPointer val0;
+	DataImagePixelPointer val1;
+	DataImagePixelPointer val2;
 	
-	// create the eigenvector containers
-	DataImagePixelPointer V0 = DataImagePixelPointer::New();
-	V0->SetNumberOfComponents(3);
-	V0->SetName("Principal Strain Vector 1");
-	DataImagePixelPointer V1 = DataImagePixelPointer::New();
-	V1->SetNumberOfComponents(3);
-	V1->SetName("Principal Strain Vector 2");	
-	DataImagePixelPointer V2 = DataImagePixelPointer::New();
-	V2->SetNumberOfComponents(3);
-	V2->SetName("Principal Strain Vector 3");
+	// create the eigenvector containers if they don't exist
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 1") ){
+		V0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray( "Principal Strain Vector 1" ) );
+	}
+	else{
+		V0 = DataImagePixelPointer::New();
+		V0->SetNumberOfComponents(3);
+		V0->SetName("Principal Strain Vector 1");
+		this->m_DataImage->GetPointData()->AddArray( V0 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 2") ){
+		V1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray( "Principal Strain Vector 2" ) );
+	}
+	else{
+		V1 = DataImagePixelPointer::New();
+		V1->SetNumberOfComponents(3);
+		V1->SetName("Principal Strain Vector 2");
+		this->m_DataImage->GetPointData()->AddArray( V1 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 3") ){
+		V2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray( "Principal Strain Vector 3" ) );
+	}
+	else{
+		V2 = DataImagePixelPointer::New();
+		V2->SetNumberOfComponents(3);
+		V2->SetName("Principal Strain Vector 3");
+		this->m_DataImage->GetPointData()->AddArray( V2 );
+	}
 
-	// create the eigenvalue containers
-	DataImagePixelPointer	val0 = DataImagePixelPointer::New();
-	val0->SetNumberOfComponents(1);
-	val0->SetName("Principal Strain Value 1");
-	DataImagePixelPointer	val1 = DataImagePixelPointer::New();
-	val1->SetNumberOfComponents(1);
-	val1->SetName("Principal Strain Value 2");
-	DataImagePixelPointer	val2 = DataImagePixelPointer::New();
-	val2->SetNumberOfComponents(1);
-	val2->SetName("Principal Strain Value 3");
-	
+	// create the eigenvalue containers if they don't exist
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 1") ){
+		val0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray( "Principal Strain Value 1" ) );
+	}
+	else{
+		val0 = DataImagePixelPointer::New();
+		val0->SetNumberOfComponents(1);
+		val0->SetName("Principal Strain Value 1");
+		this->m_DataImage->GetPointData()->AddArray( val0 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") ){
+		val1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") );
+	}
+	else{
+		val1 = DataImagePixelPointer::New();
+		val1->SetNumberOfComponents(1);
+		val1->SetName("Principal Strain Value 2");
+		this->m_DataImage->GetPointData()->AddArray( val1 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") ){
+		val2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") );
+	}
+	else{
+		val2 = DataImagePixelPointer::New();
+		val2->SetNumberOfComponents(1);
+		val2->SetName("Principal Strain Value 3");
+		this->m_DataImage->GetPointData()->AddArray( val2 );
+	}	
 	
 	for ( unsigned int i = 0; i < nPoints; ++i ){
 		// Get the point tensor
@@ -735,37 +777,66 @@ void GetPrincipalStrains()
 		val2->InsertNextTuple( &eigenValues[2] );
 	}
 	
-	this->m_DataImage->GetPointData()->AddArray( V0 );
-	this->m_DataImage->GetPointData()->AddArray( val0 );
-	this->m_DataImage->GetPointData()->AddArray( V1 );
-	this->m_DataImage->GetPointData()->AddArray( val1 );
-	this->m_DataImage->GetPointData()->AddArray( V2 );
-	this->m_DataImage->GetPointData()->AddArray( val2 );
-	
 	// next find the principal strains for the cell data
 	nPoints = this->m_DataImage->GetCellData()->GetArray("Strain")->GetNumberOfTuples();
 	
-	// create the eigenvector containers
-	V0 = DataImagePixelPointer::New();
-	V0->SetNumberOfComponents(3);
-	V0->SetName("Principal Strain Vector 1");
-	V1 = DataImagePixelPointer::New();
-	V1->SetNumberOfComponents(3);
-	V1->SetName("Principal Strain Vector 2");	
-	V2 = DataImagePixelPointer::New();
-	V2->SetNumberOfComponents(3);
-	V2->SetName("Principal Strain Vector 3");
+	// create the eigenvector containers if they don't exist
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 1") ){
+		V0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 1") );
+	}
+	else{
+		V0 = DataImagePixelPointer::New();
+		V0->SetNumberOfComponents(3);
+		V0->SetName("Principal Strain Vector 1");
+		this->m_DataImage->GetCellData()->AddArray( V0 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 2") ){
+		V1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 2") );
+	}
+	else{
+		V1 = DataImagePixelPointer::New();
+		V1->SetNumberOfComponents(3);
+		V1->SetName("Principal Strain Vector 2");
+		this->m_DataImage->GetCellData()->AddArray( V1 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 3") ){
+		V2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 3") );
+	}
+	else{
+		V2 = DataImagePixelPointer::New();
+		V2->SetNumberOfComponents(3);
+		V2->SetName("Principal Strain Vector 3");
+		this->m_DataImage->GetCellData()->AddArray( V2 );
+	}
 
-	// create the eigenvalue containers
-	val0 = DataImagePixelPointer::New();
-	val0->SetNumberOfComponents(1);
-	val0->SetName("Principal Strain Value 1");
-	val1 = DataImagePixelPointer::New();
-	val1->SetNumberOfComponents(1);
-	val1->SetName("Principal Strain Value 2");
-	val2 = DataImagePixelPointer::New();
-	val2->SetNumberOfComponents(1);
-	val2->SetName("Principal Strain Value 3");
+	// create the eigenvalue containers if they don't exist
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 1") ){
+		val0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 1") );
+	}
+	else{
+		val0 = DataImagePixelPointer::New();
+		val0->SetNumberOfComponents(1);
+		val0->SetName("Principal Strain Value 1");
+		this->m_DataImage->GetCellData()->AddArray( val0 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") ){
+		val1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") );
+	}
+	else{
+		val1 = DataImagePixelPointer::New();
+		val1->SetNumberOfComponents(1);
+		val1->SetName("Principal Strain Value 2");
+		this->m_DataImage->GetCellData()->AddArray( val1 );
+	}
+	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") ){
+		val2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") );
+	}
+	else{
+		val2 = DataImagePixelPointer::New();
+		val2->SetNumberOfComponents(1);
+		val2->SetName("Principal Strain Value 3");
+		this->m_DataImage->GetCellData()->AddArray( val2 );
+	}
 	
 	
 	for ( unsigned int i = 0; i < nPoints; ++i ){
@@ -808,13 +879,6 @@ void GetPrincipalStrains()
 		V2->InsertNextTuple( eigenVectors[2] );
 		val2->InsertNextTuple( &eigenValues[2] );
 	}
-	
-	this->m_DataImage->GetCellData()->AddArray( V0 );
-	this->m_DataImage->GetCellData()->AddArray( val0 );
-	this->m_DataImage->GetCellData()->AddArray( V1 );
-	this->m_DataImage->GetCellData()->AddArray( val1 );
-	this->m_DataImage->GetCellData()->AddArray( V2 );
-	this->m_DataImage->GetCellData()->AddArray( val2 );
 	
 }
 
