@@ -203,6 +203,15 @@ int main(int argc, char **argv)
 	msg << "Intitial DVC finished."<<std::endl<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
 	
+	msg << "Calculating Strains"<<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->GetStrains();
+
+	msg.str("");
+	msg <<"Calculating Principal Strains."<<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->GetPrincipalStrains();
+	
 	std::string debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC.vtk";
 	DICMethod->WriteMeshToVTKFile( debugFile );
 	
@@ -220,6 +229,15 @@ int main(int argc, char **argv)
 	msg.str("");
 	msg << "Second round DVC complete."<<std::endl<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
+	
+	msg << "Calculating Strains"<<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->GetStrains();
+
+	msg.str("");
+	msg <<"Calculating Principal Strains."<<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->GetPrincipalStrains();
 	
 	debugFile = DICMethod->GetOutputDirectory() + "/AfterSecondDVC.vtk";
 	DICMethod->WriteMeshToVTKFile( debugFile );
@@ -251,7 +269,7 @@ int main(int argc, char **argv)
 	msg.str("");
 	msg << "Writing output file"<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
-	std::string outputFile = outputDir + "/DIC_Result.vtk";
+	std::string outputFile = outputDir + "/Final_DIC_Result.vtk";
 	DICMethod->WriteMeshToVTKFile( outputFile );
 	
 	std::time( &rawTime );
