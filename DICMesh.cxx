@@ -85,7 +85,7 @@ DICMesh()
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
 	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
-	m_errorTolerance = .8; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
+	m_errorTolerance = 1; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
 	m_maxMeticValue = -0.80; // TODO: make this setable using a method
 	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
@@ -593,6 +593,14 @@ void CreateNewRegionListFromBadPixels()
 void CalculateStats( vtkSmartPointer<vtkIdList> points, double *vectorAverage, double *magAverage, double *vectorStDev, double *magStDev)
 {
 	unsigned int nPoints = points->GetNumberOfIds();
+	*vectorAverage = 0;
+	*(vectorAverage+1) = 0;
+	*(vectorAverage+2) = 0;
+	*magAverage = 0;
+	*vectorStDev = 0;
+	*(vectorStDev+1) = 0;
+	*(vectorStDev+2) = 0;
+	*magStDev = 0;
 	for( unsigned int i = 0; i < nPoints; ++i){
 		vtkIdType pointId = points->GetId( i );
 		double *cPoint = new double[3];
@@ -906,11 +914,6 @@ void GlobalRegistration()
 	fixedAnalysisRegion.SetIndex( fixedImageROIStart );
 	fixedAnalysisRegion.SetSize( fixedImageROILengths );
 	this->m_Registration->SetFixedImageRegion( fixedAnalysisRegion ); // set the limited analysis region
-	
-	std::cout<<"Mesh bounding box: ("<<meshBBox[0]<<", "<<meshBBox[1]<<", "<<meshBBox[2]<<", "<<meshBBox[3]<<", "<<meshBBox[4]<<", "<<meshBBox[5]<<")"<<std::endl;
-	std::cout<<"Image spacing: ("<<fixedSpacing[0]<<", "<<fixedSpacing[1]<<", "<<fixedSpacing[2]<<")"<<std::endl;
-	std::cout<<"Fixed Image analysis region: "<<fixedAnalysisRegion<<std::endl;
-	std::cout<<"Fixed Image Region: "<<this->m_Registration->GetFixedImage()->GetLargestPossibleRegion()<<std::endl;
 	
 	this->m_Registration->SetFixedImageRegionDefined( true );
 	msg.str("");

@@ -198,27 +198,13 @@ int main(int argc, char **argv)
 	optimizer->SetMaximumStepLength( 0.041 ); // smaller steps for the DIC
 	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
 
-	//~ {
-		//~ 
-		//~ DICMethod->CalculateInitialFixedImageRegionList();
-		//~ DICMethod->CalculateInitialMovingImageRegionList();
-		//~ 
-		//~ DICType::MovingImageRegionListType *movingRegionList = DICMethod->GetMovingImageRegionList();
-		//~ 
-		//~ for( unsigned int k = 0; k < movingRegionList->size(); ++k ){
-			//~ std::cout<<"Region "<<k<<std::endl;
-			//~ DICType::MovingImageType::RegionType *movingRegion = DICMethod->GetMovingImageRegionFromIndex( k );
-			//~ DICType::FixedImageType::RegionType *fixedRegion = DICMethod->GetFixedImageRegionFromIndex( k );
-			//~ std::cout<<"Moving Region: "<<*movingRegion<<std::endl;
-			//~ std::cout<<"Fixed Region: "<<*fixedRegion<<std::endl;
-		//~ }
-		//~ 
-	//~ }	
-	
 	DICMethod->ExecuteDIC();
 	msg.str("");
 	msg << "Intitial DVC finished."<<std::endl<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
+	
+	std::string debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC.vtk";
+	DICMethod->WriteMeshToVTKFile( debugFile );
 	
 	msg.str("");
 	msg << "Checking for bad pixels."<<std::endl;
@@ -227,12 +213,16 @@ int main(int argc, char **argv)
 	
 	msg.str("");
 	msg << "Starting second round DVC."<<std::endl;
+	optimizer->SetMaximumStepLength( 0.005 );
 	DICMethod->WriteToLogfile( msg.str() );
 	DICMethod->ExecuteDIC();
 	
 	msg.str("");
 	msg << "Second round DVC complete."<<std::endl<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
+	
+	debugFile = DICMethod->GetOutputDirectory() + "/AfterSecondDVC.vtk";
+	DICMethod->WriteMeshToVTKFile( debugFile );
 	
 	msg.str("");
 	msg << "Checking for bad pixels."<<std::endl;
