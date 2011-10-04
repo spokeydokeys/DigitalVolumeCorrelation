@@ -30,11 +30,70 @@
  * loads a generic vtkUnstructuredGrid into memeory and then will perform
  * operations frim the DICMesh class on it. */
 
+// the following provides updates for the RegularStep optimizer
+class CommandIterationUpdate : public itk::Command
+{
+public:
+typedef  CommandIterationUpdate   Self;
+typedef  itk::Command             Superclass;
+typedef itk::SmartPointer<Self>  Pointer;
+itkNewMacro( Self );
+
+protected:
+CommandIterationUpdate() {};
+
+public:
+
+typedef itk::RegularStepGradientDescentOptimizer     OptimizerType;
+typedef const OptimizerType                         *OptimizerPointer;
+std::string											m_LogfileName;
+
+void Execute(itk::Object *caller, const itk::EventObject & event)
+  {
+	Execute( (const itk::Object *)caller, event);
+  }
+
+  void Execute(const itk::Object * object, const itk::EventObject & event)
+  {
+	OptimizerPointer optimizer = 
+						 dynamic_cast< OptimizerPointer >( object );
+
+	if( ! itk::IterationEvent().CheckEvent( &event ) )
+	  {
+	  return;
+	  }
+	
+	std::stringstream msg("");
+	msg << optimizer->GetCurrentIteration() << " = "  << optimizer->GetValue() << " : " << optimizer->GetCurrentPosition() << std::endl;
+	this->WriteToLogfile( msg.str() );
+}
+
+void SetLogfileName( std::string logfileName )
+{
+	this->m_LogfileName = logfileName;
+}
+
+void WriteToLogfile( std::string characters )
+{
+	std::ofstream outFile;
+	outFile.open(this->m_LogfileName.c_str(), std::ofstream::app);
+	if(!outFile.is_open())
+	{
+		std::cerr<<"Logfile error!  Cannot open file."<<std::endl;
+		std::abort();
+	}
+	std::cout<< characters;
+	outFile << characters;
+	
+	outFile.close();
+}   
+};
+
 int main(int argc, char** argv)
 {
-	if( argc < 4 || argc > 4 ){
+	if( argc < 5 || argc > 5 ){
 		std::cout<<"Fatal Error: Incorrect Usage."<<std::endl;
-		std::cout<<"Usage:"<<std::endl<<argv[0]<<" [Input Unstructured Grid] [Fixed Image] [Moving Image]"<<std::endl;
+		std::cout<<"Usage:"<<std::endl<<argv[0]<<" [Input Unstructured Grid] [Fixed Image] [Moving Image] [Output Path]"<<std::endl;
 		std::cout<<"Exiting"<<std::endl;
 		return EXIT_FAILURE;
 	}
@@ -46,29 +105,29 @@ int main(int argc, char** argv)
 	typedef	itk::Image< ImagePixelType, dimension >		MovingImageType;
 	typedef itk::ImageFileReader< FixedImageType >		FixedReaderType;
 	typedef itk::ImageFileReader< MovingImageType >		MovingReaderType;
-
-	
-	FixedReaderType::Pointer fixedReader = FixedReaderType::New();
-	MovingReaderType::Pointer movingReader = MovingReaderType::New();	
-	
-	fixedReader->SetFileName( argv[2] );
-	movingReader->SetFileName( argv[3] );
-	
-	fixedReader->Update();
-	movingReader->Update();
 	
 	// define and instantate the DICmethod
 	typedef	DICMesh<FixedImageType, MovingImageType>	DICType;
 	DICType *DICMethod = new DICType;
+	std::string outputDir = argv[4];
+	std::string logfile = outputDir+"/logfile.txt";
+	DICMethod->SetLogfileName( logfile );
+	DICMethod->SetOuputDirectory( outputDir );
 	
-	/*std::string logfileName = "/home/seth/logfile.txt";
-	DICMethod->SetLogfileName( logfileName );*/
+	
+	FixedReaderType::Pointer fixedReader = FixedReaderType::New();
+	MovingReaderType::Pointer movingReader = MovingReaderType::New();	
+	fixedReader->SetFileName( argv[2] );
+	movingReader->SetFileName( argv[3] );
+	fixedReader->Update();
+	movingReader->Update();
+	
+	/*std::string logfileName = "/home/seth/logfile.txt";*/
 	DICMethod->SetFixedImage(fixedReader->GetOutput() );
 	DICMethod->SetMovingImage(movingReader->GetOutput() );
 	
-	DICMethod->SetInterrogationRegionRadius(14);
-	/*std::string outputDir = "/home/seth";
-	DICMethod->SetOuputDirectory( outputDir );*/
+	
+	DICMethod->SetInterrogationRegionRadius(33);
 		
 	// import a vtkUnstructuredGrid.
 	vtkSmartPointer<vtkUnstructuredGridReader>		vtkReader= vtkSmartPointer<vtkUnstructuredGridReader>::New();
@@ -76,15 +135,63 @@ int main(int argc, char** argv)
 	vtkReader->Update();
 	DICMethod->SetDataImage( vtkReader->GetOutput() );
 	
+	// get the registration method from the DVC algorithm
+	DICType::ImageRegistrationMethodPointer		registration = DICMethod->GetRegistrationMethod();
+	DICType::TransformTypePointer				transform = DICMethod->GetTransform();
+	DICType::OptimizerTypePointer				optimizer = DICMethod->GetOptimizer();
+	typedef DICType::ImageRegistrationMethodType::ParametersType	ParametersType;
+	
+	// Setup the registration
+	registration->SetNumberOfThreads(	8	);
+	transform->SetIdentity();
+	ParametersType	initialParameters = transform->GetParameters();
+	registration->SetInitialTransformParameters( initialParameters );
+	CommandIterationUpdate::Pointer observer = CommandIterationUpdate::New();	// thes lines will make the optimizer print out its
+	observer->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
+	optimizer->AddObserver( itk::IterationEvent(), observer );
+	
+	// The rotation part of the optimization is expected to be small 
+	// and it is more sensitive.  Use rotation values 3% of the translations.
+	typedef DICType::OptimizerType::ScalesType		OptimizerScalesType;
+	OptimizerScalesType optScales( transform->GetNumberOfParameters() );	// optimizer scales must be chosen carefully.  These were based off of
+	optScales[0] = 100;														// prelininary tests on my data.  There is some help on the ITK wiki
+	optScales[1] = 100;														// for defining them:
+	optScales[2] = 100;														// http://www.vtk.org/Wiki/ITK/ImageRegistration#Optimizers_2
+	optScales[3] = .05;
+	optScales[4] = .05;
+	optScales[5] = .05;
+	optScales[6] = .05;
+	optScales[7] = .05;
+	optScales[8] = .05;
+	optimizer->SetScales( optScales );	
+	
+	// speed things us for the actual registration
+	optimizer->SetMaximumStepLength( 0.041 ); // smaller steps for the DIC
+	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
 	// Test the algorithm here.
-	DICMethod->CreateNewRegionListFromBadPixels();
+	DICMethod->GetStrains();
+	DICMethod->GetPrincipalStrains();
+	
+	std::string outFile = outputDir + "/result1.vtk";
+	DICMethod->WriteMeshToVTKFile( outFile );	
+	
+	double testPx[3] = {.03, .001, 0.00002};
+		
+	DICMethod->GetDataImage()->GetPointData()->GetArray("Displacement")->SetTuple(13, testPx);
+	
+	DICMethod->GetStrains();
+	DICMethod->GetPrincipalStrains();
+	
+	outFile = outputDir + "/result2.vtk";	
+	DICMethod->WriteMeshToVTKFile( outFile );	
+	
+	//~ DICMethod->CreateNewRegionListFromBadPixels();
 	//DICMethod->ExecuteDIC();
 	//DICMethod->GetStrains();
 	//DICMethod->GetPrincipalStrains();	
 	
 	// Write the results of the test
-//	std::string outFile = argv[2];
-//	DICMethod->WriteMeshToVTKFile( outFile );
+
 	
 	return 0;
 }

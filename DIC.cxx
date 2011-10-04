@@ -39,6 +39,7 @@
 #include "itkCenteredEuler3DTransform.h"
 #include <itkCenteredTransformInitializer.h>
 
+#include <itkMattesMutualInformationImageToImageMetric.h>
 
 template <typename TFixedImage, typename TMovingImage>
 class DIC
@@ -91,7 +92,9 @@ typedef typename	MovingImageReaderType::Pointer								MovingImageReaderPointer;
 typedef	itk::ImageRegistrationMethod< FixedImageType, MovingImageType>			ImageRegistrationMethodType;
 typedef	typename	ImageRegistrationMethodType::Pointer						ImageRegistrationMethodPointer;
 
-typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
+//~ typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
+//~ typedef typename	MetricType::Pointer											MetricTypePointer;
+typedef itk::MattesMutualInformationImageToImageMetric< FixedImageType, MovingImageType> MetricType;
 typedef typename	MetricType::Pointer											MetricTypePointer;
 
 typedef itk::RegularStepGradientDescentOptimizer								OptimizerType;
@@ -113,20 +116,23 @@ DIC()
 	m_FixedImage			= 0; // must be provided by user
 	m_MovingImage			= 0; // must be provided by user
 	m_IRRadius				= 0; // must be provided by user
-	//~ m_Registration			= 0; // mut be provided by user
-	
 	
 	m_CurrentFixedImage		= 0;
 	m_CurrentMovingImage	= 0;
 
 	UseWholeMovingImage		= false;
-	m_FixedIRMult			= 2.5; // default size of the moving IR is 2.5 times the size of the fixed IR
+	m_FixedIRMult			= 2; // default size of the moving IR is 2.5 times the size of the fixed IR
 	
 	m_FixedROIFilter		= FixedROIFilterType::New();
 	m_MovingROIFilter		= MovingROIFilterType::New();
 	
 	// setup the registration
-	m_Metric				= MetricType::New();	
+	m_Metric				= MetricType::New();
+	//m_Metric->SetNumberOfSpatialSamples( 500000 );
+	m_Metric->UseAllPixelsOn();
+	m_Metric->SetNumberOfHistogramBins( 500 );
+	m_Metric->SetFixedImageSamplesIntensityThreshold ( 0 );
+	m_Metric->SetUseSequentialSampling( true );
 	m_Optimizer				= OptimizerType::New();
 	m_Transform				= TransformType::New();
 	m_Interpolator			= InterpolatorType::New();

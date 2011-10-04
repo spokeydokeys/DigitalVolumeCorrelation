@@ -190,12 +190,12 @@ int main(int argc, char **argv)
 	// global registration is in-exact and only gives an estimate for 
 	// the rest of the DIC.  Using a downsampled image increases the 
 	// radius of convergence and speeds things up.
-	optimizer->SetMaximumStepLength(.1); // large steps for the global registration (based on visual alignment in ParaView)
-	optimizer->SetMinimumStepLength(0.041); // low tolerance for the global registration
+	optimizer->SetMaximumStepLength(0.050); // large steps for the global registration (based on visual alignment in ParaView)
+	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration
 	DICMethod->GlobalRegistration();
 	
 	// speed things us for the actual registration
-	optimizer->SetMaximumStepLength( 0.041 ); // smaller steps for the DIC
+	optimizer->SetMaximumStepLength( 0.001 ); // smaller steps for the DIC
 	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
 
 	DICMethod->ExecuteDIC();
@@ -203,6 +203,7 @@ int main(int argc, char **argv)
 	msg << "Intitial DVC finished."<<std::endl<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
 	
+	msg.str("");
 	msg << "Calculating Strains"<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
 	DICMethod->GetStrains();
@@ -222,7 +223,6 @@ int main(int argc, char **argv)
 	
 	msg.str("");
 	msg << "Starting second round DVC."<<std::endl;
-	optimizer->SetMaximumStepLength( 0.005 );
 	DICMethod->WriteToLogfile( msg.str() );
 	DICMethod->ExecuteDIC();
 	
@@ -246,6 +246,8 @@ int main(int argc, char **argv)
 	msg << "Checking for bad pixels."<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
 	DICMethod->CreateNewRegionListFromBadPixels();
+	optimizer->SetMaximumStepLength( 0.0005 );
+	optimizer->SetMinimumStepLength( 0.00005 );
 	
 	msg.str("");
 	msg << "Starting third round DVC."<<std::endl;

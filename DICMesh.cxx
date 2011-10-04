@@ -85,7 +85,7 @@ DICMesh()
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
 	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
-	m_errorTolerance = 1; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
+	m_errorTolerance = 1.5; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
 	m_maxMeticValue = -0.80; // TODO: make this setable using a method
 	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
@@ -444,14 +444,12 @@ void ExecuteDIC()
 		FixedImageRegionType	*fixedRegion = new FixedImageRegionType ;
 		FixedImagePointer		fixedImage;
 		fixedRegion = this->GetFixedImageRegionFromIndex( i );
-		//std::cout<<"Fixed Region: "<<*fixedRegion<<std::endl;
 		fixedImage = this->GetFixedROIAsImage( fixedRegion );
 		this->SetFixedROIImage( fixedImage );
 		
 		MovingImageRegionType	*movingRegion = new MovingImageRegionType;
 		MovingImagePointer		movingImage;
 		movingRegion = this->GetMovingImageRegionFromIndex( i );
-		//std::cout<<"Moving Region: "<<*movingRegion<<std::endl;
 		movingImage = this->GetMovingROIAsImage( movingRegion );
 		this->SetMovingROIImage( movingImage );
 		
@@ -470,6 +468,10 @@ void ExecuteDIC()
 		msg.str("");
 		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
 		this->WriteToLogfile( msg.str() );
+		
+		//~ this->m_Metric->ReinitializeSeed();
+		std::cout<<"Number of Fixed Image Samples: "<<this->m_Metric->GetNumberOfPixelsCounted()<<std::endl;
+
 			
 		this->UpdateRegionRegistration();
 		
@@ -639,6 +641,7 @@ void GetPrincipalStrains()
 	vtkSmartPointer<vtkMath>		mathAlgorithm = vtkSmartPointer<vtkMath>::New();
 	// First find the principal strains for the point data
 	vtkIdType nPoints = this->m_DataImage->GetPointData()->GetArray("Strain")->GetNumberOfTuples();
+	
 	DataImagePixelPointer V0;
 	DataImagePixelPointer V1;
 	DataImagePixelPointer V2;
@@ -649,11 +652,14 @@ void GetPrincipalStrains()
 	// create the eigenvector containers if they don't exist
 	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 1") ){
 		V0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray( "Principal Strain Vector 1" ) );
+
 	}
 	else{
 		V0 = DataImagePixelPointer::New();
 		V0->SetNumberOfComponents(3);
 		V0->SetName("Principal Strain Vector 1");
+		V0->Allocate(nPoints);
+		V0->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetPointData()->AddArray( V0 );
 	}
 	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 2") ){
@@ -663,6 +669,8 @@ void GetPrincipalStrains()
 		V1 = DataImagePixelPointer::New();
 		V1->SetNumberOfComponents(3);
 		V1->SetName("Principal Strain Vector 2");
+		V1->Allocate(nPoints);
+		V1->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetPointData()->AddArray( V1 );
 	}
 	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 3") ){
@@ -672,6 +680,8 @@ void GetPrincipalStrains()
 		V2 = DataImagePixelPointer::New();
 		V2->SetNumberOfComponents(3);
 		V2->SetName("Principal Strain Vector 3");
+		V2->Allocate(nPoints);
+		V2->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetPointData()->AddArray( V2 );
 	}
 
@@ -683,6 +693,8 @@ void GetPrincipalStrains()
 		val0 = DataImagePixelPointer::New();
 		val0->SetNumberOfComponents(1);
 		val0->SetName("Principal Strain Value 1");
+		val0->Allocate(nPoints);
+		val0->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetPointData()->AddArray( val0 );
 	}
 	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") ){
@@ -692,6 +704,8 @@ void GetPrincipalStrains()
 		val1 = DataImagePixelPointer::New();
 		val1->SetNumberOfComponents(1);
 		val1->SetName("Principal Strain Value 2");
+		val1->Allocate(nPoints);
+		val1->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetPointData()->AddArray( val1 );
 	}
 	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") ){
@@ -701,6 +715,8 @@ void GetPrincipalStrains()
 		val2 = DataImagePixelPointer::New();
 		val2->SetNumberOfComponents(1);
 		val2->SetName("Principal Strain Value 3");
+		val2->Allocate(nPoints);
+		val2->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetPointData()->AddArray( val2 );
 	}	
 	
@@ -737,79 +753,91 @@ void GetPrincipalStrains()
 		mathAlgorithm->Jacobi(cTensor,eigenValues,eigenVectors);
 		
 		// save the values and vectors into the data image
-		V0->InsertNextTuple( eigenVectors[0] );
-		val0->InsertNextTuple( &eigenValues[0] );
-		V1->InsertNextTuple( eigenVectors[1] );
-		val1->InsertNextTuple( &eigenValues[1] );
-		V2->InsertNextTuple( eigenVectors[2] );
-		val2->InsertNextTuple( &eigenValues[2] );
+		V0->SetTuple( i, eigenVectors[0] );
+		val0->SetTuple( i, &eigenValues[0] );
+		V1->SetTuple( i, eigenVectors[1] );
+		val1->SetTuple( i, &eigenValues[1] );
+		V2->SetTuple( i, eigenVectors[2] );
+		val2->SetTuple( i, &eigenValues[2] );
 	}
 	
 	// next find the principal strains for the cell data
 	nPoints = this->m_DataImage->GetCellData()->GetArray("Strain")->GetNumberOfTuples();
 	
 	// create the eigenvector containers if they don't exist
-	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 1") ){
-		V0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 1") );
+	if ( this->m_DataImage->GetCellData()->GetArray("Principal Strain Vector 1") ){
+		V0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetCellData()->GetArray("Principal Strain Vector 1") );
 	}
 	else{
 		V0 = DataImagePixelPointer::New();
 		V0->SetNumberOfComponents(3);
 		V0->SetName("Principal Strain Vector 1");
+		V0->Allocate(nPoints);
+		V0->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetCellData()->AddArray( V0 );
 	}
-	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 2") ){
-		V1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 2") );
+	if ( this->m_DataImage->GetCellData()->GetArray("Principal Strain Vector 2") ){
+		V1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetCellData()->GetArray("Principal Strain Vector 2") );
 	}
 	else{
 		V1 = DataImagePixelPointer::New();
 		V1->SetNumberOfComponents(3);
 		V1->SetName("Principal Strain Vector 2");
+		V1->Allocate(nPoints);
+		V1->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetCellData()->AddArray( V1 );
 	}
-	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 3") ){
-		V2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Vector 3") );
+	if ( this->m_DataImage->GetCellData()->GetArray("Principal Strain Vector 3") ){
+		V2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetCellData()->GetArray("Principal Strain Vector 3") );
 	}
 	else{
 		V2 = DataImagePixelPointer::New();
 		V2->SetNumberOfComponents(3);
 		V2->SetName("Principal Strain Vector 3");
+		V2->Allocate(nPoints);
+		V2->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetCellData()->AddArray( V2 );
 	}
 
 	// create the eigenvalue containers if they don't exist
-	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 1") ){
-		val0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 1") );
+	if ( this->m_DataImage->GetCellData()->GetArray("Principal Strain Value 1") ){
+		val0 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetCellData()->GetArray("Principal Strain Value 1") );
 	}
 	else{
 		val0 = DataImagePixelPointer::New();
 		val0->SetNumberOfComponents(1);
 		val0->SetName("Principal Strain Value 1");
+		val0->Allocate(nPoints);
+		val0->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetCellData()->AddArray( val0 );
 	}
-	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") ){
-		val1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 2") );
+	if ( this->m_DataImage->GetCellData()->GetArray("Principal Strain Value 2") ){
+		val1 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetCellData()->GetArray("Principal Strain Value 2") );
 	}
 	else{
 		val1 = DataImagePixelPointer::New();
 		val1->SetNumberOfComponents(1);
 		val1->SetName("Principal Strain Value 2");
+		val1->Allocate(nPoints);
+		val1->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetCellData()->AddArray( val1 );
 	}
-	if ( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") ){
-		val2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetPointData()->GetArray("Principal Strain Value 3") );
+	if ( this->m_DataImage->GetCellData()->GetArray("Principal Strain Value 3") ){
+		val2 = vtkDoubleArray::SafeDownCast( this->m_DataImage->GetCellData()->GetArray("Principal Strain Value 3") );
 	}
 	else{
 		val2 = DataImagePixelPointer::New();
 		val2->SetNumberOfComponents(1);
 		val2->SetName("Principal Strain Value 3");
+		val2->Allocate(nPoints);
+		val2->SetNumberOfTuples(nPoints);
 		this->m_DataImage->GetCellData()->AddArray( val2 );
 	}
-	
 	
 	for ( unsigned int i = 0; i < nPoints; ++i ){
 		// Get the point tensor
 		double *cTensorRaw = this->m_DataImage->GetCellData()->GetArray("Strain")->GetTuple( i );
+
 		// reform tensor into an appropreate array
 		double *cTensor[3];
 		double cT0[3];
@@ -827,7 +855,7 @@ void GetPrincipalStrains()
 		cT2[0] = *(cTensorRaw+6);
 		cT2[1] = *(cTensorRaw+7);
 		cT2[2] = *(cTensorRaw+8);
-				
+
 		// Get the eigen-values and -vectors
 		double eigenValues[3]; // The Eigenvalues
 		double *eigenVectors[3]; // vector of pointers to eigenvectors
@@ -835,17 +863,17 @@ void GetPrincipalStrains()
 		double v1[3]; // eigen vector 2
 		double v2[3]; // eigen vector 3
 		eigenVectors[0] = v0; eigenVectors[1] = v1; eigenVectors[2] = v2;
-		
+
 		// perform the calculation of the principal strains
 		mathAlgorithm->Jacobi(cTensor,eigenValues,eigenVectors);
-		
+
 		// save the values and vectors into the data image
-		V0->InsertNextTuple( eigenVectors[0] );
-		val0->InsertNextTuple( &eigenValues[0] );
-		V1->InsertNextTuple( eigenVectors[1] );
-		val1->InsertNextTuple( &eigenValues[1] );
-		V2->InsertNextTuple( eigenVectors[2] );
-		val2->InsertNextTuple( &eigenValues[2] );
+		V0->SetTuple( i, eigenVectors[0] );
+		val0->SetTuple( i, &eigenValues[0] );
+		V1->SetTuple( i, eigenVectors[1] );
+		val1->SetTuple( i, &eigenValues[1] );
+		V2->SetTuple( i, eigenVectors[2] );
+		val2->SetTuple( i, &eigenValues[2] );
 	}
 	
 }
@@ -996,6 +1024,18 @@ void SetErrorTolerance(double tolerance)
 void SetErrorRadius(double radius)
 {
 	this->m_errorRadius = radius;
+}
+
+void SetMaxMetricValue( double maxVal )
+{
+	if (m_maxMeticValue != maxVal){
+		m_maxMeticValue = maxVal;
+	}
+}
+
+double GetMaxMetricValue()
+{
+	return m_maxMeticValue;
 }
 
 private:
