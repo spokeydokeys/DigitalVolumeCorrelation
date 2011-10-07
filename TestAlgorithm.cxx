@@ -24,6 +24,8 @@
 #include "itkImageFileReader.h"
 #include <vtkUnstructuredGridReader.h>
 #include "itkImage.h"
+#include "itkLBFGSBOptimizer.h"
+#include "itkNormalizedCorrelationImageToImageMetric.h"
 
 
 /** This file is used to test the functionality of new algorithms.  It
@@ -89,6 +91,69 @@ void WriteToLogfile( std::string characters )
 }   
 };
 
+// the following provides updates for the Newtonian optimizer
+class NOCommandIterationUpdate : public itk::Command
+{
+public:
+typedef  NOCommandIterationUpdate   Self;
+typedef  itk::Command             Superclass;
+typedef itk::SmartPointer<Self>  Pointer;
+itkNewMacro( Self );
+
+protected:
+NOCommandIterationUpdate() {};
+
+public:
+
+typedef itk::LBFGSBOptimizer     OptimizerType;
+typedef const OptimizerType                         *OptimizerPointer;
+std::string											m_LogfileName;
+
+void Execute(itk::Object *caller, const itk::EventObject & event)
+  {
+	Execute( (const itk::Object *)caller, event);
+  }
+
+  void Execute(const itk::Object * object, const itk::EventObject & event)
+  {
+	OptimizerPointer optimizer = 
+						 dynamic_cast< OptimizerPointer >( object );
+
+	if( ! itk::IterationEvent().CheckEvent( &event ) )
+	  {
+	  return;
+	  }
+	
+	std::stringstream msg("");
+	//~ msg << optimizer->GetCurrentIteration() << " = "  << optimizer->GetValue() << " : " << optimizer->GetCurrentPosition() << std::endl;
+	msg << optimizer->GetCurrentIteration() << "   ";
+    msg << optimizer->GetCachedValue() << "   ";
+    msg << optimizer->GetCachedCurrentPosition() << "   ";
+    msg << optimizer->GetInfinityNormOfProjectedGradient() << std::endl;
+	this->WriteToLogfile( msg.str() );
+}
+
+void SetLogfileName( std::string logfileName )
+{
+	this->m_LogfileName = logfileName;
+}
+
+void WriteToLogfile( std::string characters )
+{
+	std::ofstream outFile;
+	outFile.open(this->m_LogfileName.c_str(), std::ofstream::app);
+	if(!outFile.is_open())
+	{
+		std::cerr<<"Logfile error!  Cannot open file."<<std::endl;
+		std::abort();
+	}
+	std::cout<< characters;
+	outFile << characters;
+	
+	outFile.close();
+}   
+};
+
 int main(int argc, char** argv)
 {
 	if( argc < 5 || argc > 5 ){
@@ -127,7 +192,7 @@ int main(int argc, char** argv)
 	DICMethod->SetMovingImage(movingReader->GetOutput() );
 	
 	
-	DICMethod->SetInterrogationRegionRadius(33);
+	DICMethod->SetInterrogationRegionRadius(36);
 		
 	// import a vtkUnstructuredGrid.
 	vtkSmartPointer<vtkUnstructuredGridReader>		vtkReader= vtkSmartPointer<vtkUnstructuredGridReader>::New();
@@ -146,9 +211,10 @@ int main(int argc, char** argv)
 	transform->SetIdentity();
 	ParametersType	initialParameters = transform->GetParameters();
 	registration->SetInitialTransformParameters( initialParameters );
-	CommandIterationUpdate::Pointer observer = CommandIterationUpdate::New();	// thes lines will make the optimizer print out its
-	observer->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
-	optimizer->AddObserver( itk::IterationEvent(), observer );
+	
+	//~ CommandIterationUpdate::Pointer observer = CommandIterationUpdate::New();	// thes lines will make the optimizer print out its
+	//~ observer->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
+	//~ optimizer->AddObserver( itk::IterationEvent(), observer );
 	
 	// The rotation part of the optimization is expected to be small 
 	// and it is more sensitive.  Use rotation values 3% of the translations.
@@ -163,26 +229,53 @@ int main(int argc, char** argv)
 	optScales[6] = .05;
 	optScales[7] = .05;
 	optScales[8] = .05;
-	optimizer->SetScales( optScales );	
+	//~ optimizer->SetScales( optScales );	
 	
-	// speed things us for the actual registration
-	optimizer->SetMaximumStepLength( 0.041 ); // smaller steps for the DIC
-	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
-	// Test the algorithm here.
-	DICMethod->GetStrains();
-	DICMethod->GetPrincipalStrains();
+	//~ // speed things us for the actual registration
+	//~ optimizer->SetMaximumStepLength( 0.041 ); // smaller steps for the DIC
+	//~ optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
 	
-	std::string outFile = outputDir + "/result1.vtk";
-	DICMethod->WriteMeshToVTKFile( outFile );	
+	typedef itk::LBFGSBOptimizer NewtonOptimizerType;
+	NewtonOptimizerType::Pointer newtonOptimizer = NewtonOptimizerType::New();
+	//~ newtonOptimizer->SetScales( optScales );
+	//~ newtonOptimizer->SetGradientConvergenceTolerance( 1e-10 );
+	//~ newtonOptimizer->SetDefaultStepLength( .00041 );
+	//newtonOptimizer->SetCostFunction( registration->GetMetric() );
 	
-	double testPx[3] = {.03, .001, 0.00002};
-		
-	DICMethod->GetDataImage()->GetPointData()->GetArray("Displacement")->SetTuple(13, testPx);
+	typedef itk::NormalizedCorrelationImageToImageMetric<FixedImageType, MovingImageType> NormalizedMetricType;
+	NormalizedMetricType::Pointer normalizedMetric = NormalizedMetricType::New();
+
+	NOCommandIterationUpdate::Pointer nOObserver = NOCommandIterationUpdate::New();	// thes lines will make the optimizer print out itsO
+	nOObserver->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
+	newtonOptimizer->AddObserver( itk::IterationEvent(), nOObserver );
 	
-	DICMethod->GetStrains();
-	DICMethod->GetPrincipalStrains();
+	NewtonOptimizerType::BoundSelectionType boundSelect( transform->GetNumberOfParameters() );
+	NewtonOptimizerType::BoundValueType upperBound( transform->GetNumberOfParameters() );
+	NewtonOptimizerType::BoundValueType lowerBound( transform->GetNumberOfParameters() );
+
+	boundSelect.Fill( 0 );
+	upperBound.Fill( 0.0 );
+	lowerBound.Fill( 0.0 );
+
+	newtonOptimizer->SetBoundSelection( boundSelect );
+	newtonOptimizer->SetUpperBound( upperBound );
+	newtonOptimizer->SetLowerBound( lowerBound );
+
+	newtonOptimizer->SetCostFunctionConvergenceFactor( 1.e7 );
+	newtonOptimizer->SetProjectedGradientTolerance( 1e-6 );
+	//~ newtonOptimizer->SetMaximumNumberOfIterations( 200 );
+	//~ newtonOptimizer->SetMaximumNumberOfEvaluations( 30 );
+	//~ newtonOptimizer->SetMaximumNumberOfCorrections( 5 );
 	
-	outFile = outputDir + "/result2.vtk";	
+	//~ registration->SetMetric( normalizedMetric );
+	registration->SetOptimizer( newtonOptimizer );
+	
+	DICMethod->CalculateInitialFixedImageRegionList();
+	DICMethod->CalculateInitialMovingImageRegionList();
+	
+	DICMethod->ExecuteDIC();
+	
+	std::string outFile = outputDir + "/result2.vtk";	
 	DICMethod->WriteMeshToVTKFile( outFile );	
 	
 	//~ DICMethod->CreateNewRegionListFromBadPixels();

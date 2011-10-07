@@ -40,6 +40,7 @@
 #include <itkCenteredTransformInitializer.h>
 
 #include <itkMattesMutualInformationImageToImageMetric.h>
+#include "itkLBFGSBOptimizer.h"
 
 template <typename TFixedImage, typename TMovingImage>
 class DIC
@@ -99,6 +100,8 @@ typedef typename	MetricType::Pointer											MetricTypePointer;
 
 typedef itk::RegularStepGradientDescentOptimizer								OptimizerType;
 typedef typename	OptimizerType::Pointer										OptimizerTypePointer;
+//~ typedef itk::LBFGSBOptimizer														OptimizerType;
+//~ typedef	typename	OptimizerType::Pointer										OptimizerTypePointer;
 
 typedef itk::CenteredEuler3DTransform< double >									TransformType;
 typedef	typename	TransformType::Pointer										TransformTypePointer;
@@ -126,16 +129,32 @@ DIC()
 	m_FixedROIFilter		= FixedROIFilterType::New();
 	m_MovingROIFilter		= MovingROIFilterType::New();
 	
-	// setup the registration
+	// setup the registration metric
 	m_Metric				= MetricType::New();
-	//m_Metric->SetNumberOfSpatialSamples( 500000 );
 	m_Metric->UseAllPixelsOn();
 	m_Metric->SetNumberOfHistogramBins( 500 );
 	m_Metric->SetFixedImageSamplesIntensityThreshold ( 0 );
 	m_Metric->SetUseSequentialSampling( true );
-	m_Optimizer				= OptimizerType::New();
 	m_Transform				= TransformType::New();
+	// Setup the registration optimizer
+	m_Optimizer				= OptimizerType::New();
+	//~ OptimizerType::BoundSelectionType boundSelect( m_Transform->GetNumberOfParameters() );
+	//~ OptimizerType::BoundValueType upperBound( m_Transform->GetNumberOfParameters() );
+	//~ OptimizerType::BoundValueType lowerBound( m_Transform->GetNumberOfParameters() );
+//~ 
+	//~ boundSelect.Fill( 0 );
+	//~ upperBound.Fill( 0.0 );
+	//~ lowerBound.Fill( 0.0 );
+//~ 
+	//~ m_Optimizer->SetBoundSelection( boundSelect );
+	//~ m_Optimizer->SetUpperBound( upperBound );
+	//~ m_Optimizer->SetLowerBound( lowerBound );
+//~ 
+	//~ m_Optimizer->SetCostFunctionConvergenceFactor( 1.e7 );
+	//~ m_Optimizer->SetProjectedGradientTolerance( 1e-6 );
+	// Setup the registration interpolator
 	m_Interpolator			= InterpolatorType::New();
+	// Setup the registration
 	m_Registration			= ImageRegistrationMethodType::New();
 	m_Registration->SetTransform( m_Transform );
 	m_Registration->SetInterpolator( m_Interpolator );
@@ -423,6 +442,7 @@ void SetFixedROIImage( FixedImagePointer roiImage )
 	if (this->m_CurrentFixedImage.GetPointer() != roiImage.GetPointer() )
 	{
 		this->m_CurrentFixedImage = roiImage;
+		this->m_Registration->SetFixedImage( this->m_CurrentFixedImage );
 	}
 }
 
@@ -432,14 +452,15 @@ void SetMovingROIImage( MovingImagePointer roiImage )
 	if (this->m_CurrentMovingImage.GetPointer() != roiImage.GetPointer() )
 	{
 		this->m_CurrentMovingImage = roiImage;
+		this->m_Registration->SetMovingImage( this->m_CurrentMovingImage );
 	}
 }
 
 /** A function to get the registration of the two regions. */
 void UpdateRegionRegistration()
 {
-	this->m_Registration->SetFixedImage( this->m_CurrentFixedImage );
-	this->m_Registration->SetMovingImage( this->m_CurrentMovingImage );
+	//~ this->m_Registration->SetFixedImage( this->m_CurrentFixedImage );
+	//~ this->m_Registration->SetMovingImage( this->m_CurrentMovingImage );
 
 	try
 	{

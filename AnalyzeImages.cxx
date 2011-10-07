@@ -22,19 +22,21 @@
 #include "DICMesh.cxx"
 #include "itkImageFileWriter.h"
 #include <vtkUnstructuredGridReader.h>
+#include "itkNormalizedCorrelationImageToImageMetric.h"
+#include "itkLBFGSBOptimizer.h"
 
 
 // the following provides updates for the RegularStep optimizer
-class CommandIterationUpdate : public itk::Command
+class RSOCommandIterationUpdate : public itk::Command
 {
 public:
-typedef  CommandIterationUpdate   Self;
+typedef  RSOCommandIterationUpdate   Self;
 typedef  itk::Command             Superclass;
 typedef itk::SmartPointer<Self>  Pointer;
 itkNewMacro( Self );
 
 protected:
-CommandIterationUpdate() {};
+RSOCommandIterationUpdate() {};
 
 public:
 
@@ -82,6 +84,71 @@ void WriteToLogfile( std::string characters )
 	outFile.close();
 }   
 };
+
+/*// the following provides updates for the Newtonian optimizer
+class NOCommandIterationUpdate : public itk::Command
+{
+public:
+typedef  NOCommandIterationUpdate   Self;
+typedef  itk::Command             Superclass;
+typedef itk::SmartPointer<Self>  Pointer;
+itkNewMacro( Self );
+
+protected:
+NOCommandIterationUpdate() {};
+
+public:
+
+typedef itk::LBFGSBOptimizer     OptimizerType;
+typedef const OptimizerType                         *OptimizerPointer;
+std::string											m_LogfileName;
+
+void Execute(itk::Object *caller, const itk::EventObject & event)
+  {
+	Execute( (const itk::Object *)caller, event);
+  }
+
+  void Execute(const itk::Object * object, const itk::EventObject & event)
+  {
+	OptimizerPointer optimizer = 
+						 dynamic_cast< OptimizerPointer >( object );
+
+	if( ! itk::IterationEvent().CheckEvent( &event ) )
+	  {
+	  return;
+	  }
+	
+	std::stringstream msg("");
+	msg << optimizer->GetCurrentIteration() << "   ";
+    msg << optimizer->GetCachedValue() << "   ";
+    msg << optimizer->GetCachedCurrentPosition() << "   ";
+    msg << optimizer->GetInfinityNormOfProjectedGradient() << std::endl;
+	this->WriteToLogfile( msg.str() );
+	this->WriteToLogfile( msg.str() );
+}
+
+void SetLogfileName( std::string logfileName )
+{
+	this->m_LogfileName = logfileName;
+}
+
+void WriteToLogfile( std::string characters )
+{
+	std::ofstream outFile;
+	outFile.open(this->m_LogfileName.c_str(), std::ofstream::app);
+	if(!outFile.is_open())
+	{
+		std::cerr<<"Logfile error!  Cannot open file."<<std::endl;
+		std::abort();
+	}
+	std::cout<< characters;
+	outFile << characters;
+	
+	outFile.close();
+}   
+};*/
+
+
 
 int main(int argc, char **argv)
 {
@@ -168,7 +235,11 @@ int main(int argc, char **argv)
 	ParametersType	initialParameters = transform->GetParameters();
 	registration->SetInitialTransformParameters( initialParameters );
 	
-	CommandIterationUpdate::Pointer observer = CommandIterationUpdate::New();	// thes lines will make the optimizer print out its
+	/*NOCommandIterationUpdate::Pointer nOObserver = NOCommandIterationUpdate::New();	// thes lines will make the optimizer print out itsO
+	nOObserver->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
+	optimizer->AddObserver( itk::IterationEvent(), nOObserver );*/
+	
+	RSOCommandIterationUpdate::Pointer observer = RSOCommandIterationUpdate::New();	// thes lines will make the optimizer print out its
 	observer->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
 	optimizer->AddObserver( itk::IterationEvent(), observer );
 	
@@ -191,7 +262,7 @@ int main(int argc, char **argv)
 	// the rest of the DIC.  Using a downsampled image increases the 
 	// radius of convergence and speeds things up.
 	optimizer->SetMaximumStepLength(0.050); // large steps for the global registration (based on visual alignment in ParaView)
-	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration
+	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration*/
 	DICMethod->GlobalRegistration();
 	
 	// speed things us for the actual registration
@@ -217,48 +288,87 @@ int main(int argc, char **argv)
 	DICMethod->WriteMeshToVTKFile( debugFile );
 	
 	msg.str("");
-	msg << "Checking for bad pixels."<<std::endl;
+	msg <<"Starting with the second round DVC"<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->CreateNewRegionListFromBadPixels();
 	
-	msg.str("");
-	msg << "Starting second round DVC."<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->CalculateInitialFixedImageRegionList();
+	DICMethod->CalculateInitialMovingImageRegionList();
+	
+	//~ typedef itk::NormalizedCorrelationImageToImageMetric<FixedImageType, MovingImageType> NormalizedMetricType;
+	//~ NormalizedMetricType::Pointer normalizedMetric = NormalizedMetricType::New();
+	
+	typedef itk::LBFGSBOptimizer NewtonOptimizerType;
+	NewtonOptimizerType::Pointer newtonOptimizer = NewtonOptimizerType::New();
+	NewtonOptimizerType::BoundSelectionType boundSelect( transform->GetNumberOfParameters() );
+	NewtonOptimizerType::BoundValueType upperBound( transform->GetNumberOfParameters() );
+	NewtonOptimizerType::BoundValueType lowerBound( transform->GetNumberOfParameters() );
+
+	boundSelect.Fill( 2 );
+	upperBound.Fill( -0.05 );
+	lowerBound.Fill(  0.05 );
+
+	newtonOptimizer->SetBoundSelection( boundSelect );
+	newtonOptimizer->SetUpperBound( upperBound );
+	newtonOptimizer->SetLowerBound( lowerBound );
+
+	newtonOptimizer->SetCostFunctionConvergenceFactor( 1.e1 );
+	newtonOptimizer->SetProjectedGradientTolerance( 1e-10 );
+	//~ newtonOptimizer->SetScales( optScales );
+	//~ newtonOptimizer->SetGradientConvergenceTolerance( .001 );
+	//~ newtonOptimizer->SetDefaultStepLength( .001 );
+	
+	//~ registration->SetMetric( normalizedMetric );
+	registration->SetOptimizer( newtonOptimizer );
+	
 	DICMethod->ExecuteDIC();
+	//~ 
+	msg.str("");
+	msg<<"Second Round Finished"<<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
 	
+	//~ msg.str("");
+	//~ msg << "Checking for bad pixels."<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
+	//~ DICMethod->CreateNewRegionListFromBadPixels();
+	//~ 
+	//~ msg.str("");
+	//~ msg << "Starting second round DVC."<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
+	//~ DICMethod->ExecuteDIC();
+	//~ 
 	msg.str("");
 	msg << "Second round DVC complete."<<std::endl<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
+	//~ 
+	//~ msg << "Calculating Strains"<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
+	//~ DICMethod->GetStrains();
+//~ 
+	//~ msg.str("");
+	//~ msg <<"Calculating Principal Strains."<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
+	//~ DICMethod->GetPrincipalStrains();
+	//~ 
+	//~ debugFile = DICMethod->GetOutputDirectory() + "/AfterSecondDVC.vtk";
+	//~ DICMethod->WriteMeshToVTKFile( debugFile );
+	//~ 
+	//~ msg.str("");
+	//~ msg << "Checking for bad pixels."<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
+	//~ DICMethod->CreateNewRegionListFromBadPixels();
+	//~ //optimizer->SetMaximumStepLength( 0.0005 );
+	//~ //optimizer->SetMinimumStepLength( 0.00005 );
+	//~ 
+	//~ msg.str("");
+	//~ msg << "Starting third round DVC."<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
+	//~ DICMethod->ExecuteDIC();
+	//~ 
+	//~ msg.str("");
+	//~ msg << "Third round DVC complete."<<std::endl<<std::endl;
+	//~ DICMethod->WriteToLogfile( msg.str() );
 	
-	msg << "Calculating Strains"<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->GetStrains();
-
 	msg.str("");
-	msg <<"Calculating Principal Strains."<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->GetPrincipalStrains();
-	
-	debugFile = DICMethod->GetOutputDirectory() + "/AfterSecondDVC.vtk";
-	DICMethod->WriteMeshToVTKFile( debugFile );
-	
-	msg.str("");
-	msg << "Checking for bad pixels."<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->CreateNewRegionListFromBadPixels();
-	optimizer->SetMaximumStepLength( 0.0005 );
-	optimizer->SetMinimumStepLength( 0.00005 );
-	
-	msg.str("");
-	msg << "Starting third round DVC."<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->ExecuteDIC();
-	
-	msg.str("");
-	msg << "Third round DVC complete."<<std::endl<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	msg.str("");
-	
 	msg << "Calculating Strains"<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
 	DICMethod->GetStrains();

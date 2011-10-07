@@ -85,9 +85,9 @@ DICMesh()
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
 	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
-	m_errorTolerance = 1.5; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
+	m_errorTolerance = 2; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
-	m_maxMeticValue = -0.80; // TODO: make this setable using a method
+	m_maxMeticValue = -0.00; // TODO: make this setable using a method
 	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
 }
 
@@ -98,6 +98,7 @@ DICMesh()
 void CalculateInitialMovingImageRegionList()
 {
 	vtkIdType	numberOfNodes = m_DataImage->GetNumberOfPoints();
+	this->m_MovingImageRegionList.clear();
 	
 	for ( int i = 0; i < numberOfNodes; ++i){ // Iterate through the points in the point set
 		double *currentLocation = new double[3];
@@ -128,6 +129,8 @@ double *CalculateMovingImageRegionLocationFromIndex( vtkIdType i)
 void CalculateInitialFixedImageRegionList()
 {
 	vtkIdType	numberOfNodes = m_DataImage->GetNumberOfPoints();
+	this->m_FixedImageRegionList.clear();
+	this->m_pointsList->Reset();
 	
 	for (int i = 0; i < numberOfNodes; ++i){
 		double *currentLocation = new double[3];
@@ -469,6 +472,8 @@ void ExecuteDIC()
 		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
 		this->WriteToLogfile( msg.str() );
 		
+		//if( !strcmp(this->m_Metric->GetNameOfClass(),"MattesMutualInformationImageToImageMetric") ){
+			
 		//~ this->m_Metric->ReinitializeSeed();
 		std::cout<<"Number of Fixed Image Samples: "<<this->m_Metric->GetNumberOfPixelsCounted()<<std::endl;
 
@@ -1044,7 +1049,7 @@ DataImagePointer			m_DataImage;
 vtkSmartPointer<vtkPKdTree>	m_KDTree;
 double						m_errorRadius;
 double						m_errorTolerance;
-double_t					m_maxMeticValue; // this because I'm using the normalized x-correlation coefficient metric
+double						m_maxMeticValue; // this because I'm using the normalized x-correlation coefficient metric
 vtkSmartPointer<vtkIdList>	m_pointsList;
 RegistrationParametersType	m_GlobalRegistrationParameters;
 unsigned int				m_GlobalRegDownsampleValue;
