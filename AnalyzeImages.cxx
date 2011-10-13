@@ -85,7 +85,7 @@ void WriteToLogfile( std::string characters )
 }   
 };
 
-/*// the following provides updates for the Newtonian optimizer
+// the following provides updates for the Newtonian optimizer
 class NOCommandIterationUpdate : public itk::Command
 {
 public:
@@ -119,10 +119,10 @@ void Execute(itk::Object *caller, const itk::EventObject & event)
 	  }
 	
 	std::stringstream msg("");
-	msg << optimizer->GetCurrentIteration() << "   ";
-    msg << optimizer->GetCachedValue() << "   ";
-    msg << optimizer->GetCachedCurrentPosition() << "   ";
-    msg << optimizer->GetInfinityNormOfProjectedGradient() << std::endl;
+	msg << "Iteration: " << optimizer->GetCurrentIteration() << "   ";
+    msg << "Metric Value: " << optimizer->GetCachedValue() << "   ";
+    msg << "Position: " << optimizer->GetCachedCurrentPosition() << "   ";
+    msg << "Gradient Magnitude: " << optimizer->GetInfinityNormOfProjectedGradient() << std::endl;
 	this->WriteToLogfile( msg.str() );
 	this->WriteToLogfile( msg.str() );
 }
@@ -146,7 +146,7 @@ void WriteToLogfile( std::string characters )
 	
 	outFile.close();
 }   
-};*/
+};
 
 
 
@@ -156,7 +156,8 @@ int main(int argc, char **argv)
 	{
 		std::cerr<<"Improper arguments!"<<std::endl;
 		std::cerr<<"Usage:"<<std::endl;
-		std::cerr<<argv[0]<<" FixedImage MovingImage GmshFile OutputDirectory IRRegionRadius"<<std::endl;
+		std::cerr<<argv[0]<<" FixedImage MovingImage GmshFile OutputDirectory IRRegionRadius"<<std::endl<<std::endl;
+		std::cerr<<"If a .vtk file is provided in place of a GmshFile it will be assumed that the analysis is a restart and the global and initial DVC will be skipped."<<std::endl;
 		std::cerr<<"Aborting"<<std::endl;
 		return EXIT_FAILURE;
 	}
@@ -205,13 +206,26 @@ int main(int argc, char **argv)
 	DICMethod->SetFixedImage(fixedReader->GetOutput());
 	DICMethod->SetMovingImage( movingReader->GetOutput() );
 	
-	/* This block would be used to import a vtk file, rather than read a gmsh file. */
-	//~ vtkSmartPointer<vtkUnstructuredGridReader>		vtkReader= vtkSmartPointer<vtkUnstructuredGridReader>::New();
-	//~ vtkReader->SetFileName( argv[3] );
-	//~ vtkReader->Update();
-	//~ DICMethod->SetDataImage( vtkReader->GetOutput() );
-		
-	DICMethod->ReadMeshFromGmshFile( argv[3] );
+	std::string inputMesh = argv[3];
+	bool restartFile = false;
+	if ( inputMesh.find("vtk",inputMesh.length()-5) ){
+		restartFile = true;
+		msg.str("");
+		msg<<"Using "<<inputMesh<<" as a restart file."<<std::endl<<std::endl;
+		DICMethod->WriteToLogfile(msg.str());
+	}
+	
+	// If the file is a restart file, read it in and set it as the data image
+	if ( restartFile ){
+		vtkSmartPointer<vtkUnstructuredGridReader>		vtkReader= vtkSmartPointer<vtkUnstructuredGridReader>::New();
+		vtkReader->SetFileName( argv[3] );
+		vtkReader->Update();
+		DICMethod->SetDataImage( vtkReader->GetOutput() );
+	}
+	else{		
+		DICMethod->ReadMeshFromGmshFile( argv[3] );
+	}
+	
 	msg.str("");
 	msg << "Images in memory."<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
@@ -229,7 +243,7 @@ int main(int argc, char **argv)
 	typedef DICType::ImageRegistrationMethodType::ParametersType	ParametersType;
 	
 	// Setup the registration
-	registration->SetNumberOfThreads(	8	);
+	registration->SetNumberOfThreads(	3	);
 	
 	transform->SetIdentity();
 	ParametersType	initialParameters = transform->GetParameters();
@@ -261,38 +275,48 @@ int main(int argc, char **argv)
 	// global registration is in-exact and only gives an estimate for 
 	// the rest of the DIC.  Using a downsampled image increases the 
 	// radius of convergence and speeds things up.
-	optimizer->SetMaximumStepLength(0.050); // large steps for the global registration (based on visual alignment in ParaView)
+	optimizer->SetMaximumStepLength(0.010); // large steps for the global registration (based on visual alignment in ParaView)
 	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration*/
-	DICMethod->GlobalRegistration();
+	if ( !restartFile ) DICMethod->GlobalRegistration();
 	
 	// speed things us for the actual registration
 	optimizer->SetMaximumStepLength( 0.001 ); // smaller steps for the DIC
 	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
+	
+	if ( !restartFile ){
+		DICMethod->ExecuteDIC();
+		msg.str("");
+		msg << "Intitial DVC finished."<<std::endl<<std::endl;
+		DICMethod->WriteToLogfile( msg.str() );
+	
+		msg.str("");
+		msg << "Calculating Strains"<<std::endl;
+		DICMethod->WriteToLogfile( msg.str() );
+		DICMethod->GetStrains();
 
-	DICMethod->ExecuteDIC();
-	msg.str("");
-	msg << "Intitial DVC finished."<<std::endl<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
+		msg.str("");
+		msg <<"Calculating Principal Strains."<<std::endl;
+		DICMethod->WriteToLogfile( msg.str() );
+		DICMethod->GetPrincipalStrains();
+		
+		std::string debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC.vtk";
+		DICMethod->WriteMeshToVTKFile( debugFile );
 	
-	msg.str("");
-	msg << "Calculating Strains"<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->GetStrains();
-
-	msg.str("");
-	msg <<"Calculating Principal Strains."<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->GetPrincipalStrains();
+		msg.str("");
+		msg <<"Starting with the second round DVC"<<std::endl;
+		DICMethod->WriteToLogfile( msg.str() );
+	}
 	
-	std::string debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC.vtk";
-	DICMethod->WriteMeshToVTKFile( debugFile );
-	
-	msg.str("");
-	msg <<"Starting with the second round DVC"<<std::endl;
-	DICMethod->WriteToLogfile( msg.str() );
+	if ( restartFile ){
+		msg.str("");
+		msg<<"Restarting by skipping the global registration and inital DIC."<<std::endl<<std::endl;
+		DICMethod->WriteToLogfile( msg.str() );
+	}
 	
 	DICMethod->CalculateInitialFixedImageRegionList();
 	DICMethod->CalculateInitialMovingImageRegionList();
+	
+
 	
 	//~ typedef itk::NormalizedCorrelationImageToImageMetric<FixedImageType, MovingImageType> NormalizedMetricType;
 	//~ NormalizedMetricType::Pointer normalizedMetric = NormalizedMetricType::New();
@@ -302,17 +326,30 @@ int main(int argc, char **argv)
 	NewtonOptimizerType::BoundSelectionType boundSelect( transform->GetNumberOfParameters() );
 	NewtonOptimizerType::BoundValueType upperBound( transform->GetNumberOfParameters() );
 	NewtonOptimizerType::BoundValueType lowerBound( transform->GetNumberOfParameters() );
+	
+	NOCommandIterationUpdate::Pointer nOObserver = NOCommandIterationUpdate::New();	// thes lines will make the optimizer print out its
+	nOObserver->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
+	newtonOptimizer->AddObserver( itk::IterationEvent(), nOObserver );	
 
-	boundSelect.Fill( 2 );
-	upperBound.Fill( -0.05 );
-	lowerBound.Fill(  0.05 );
+	boundSelect.Fill( 0 );
+	boundSelect[6] = 2;
+	boundSelect[7] = 2;
+	boundSelect[8] = 2;
+	upperBound.Fill(  0 );
+	upperBound[6] = .2;
+	upperBound[7] = .2;
+	upperBound[8] = .2;
+	lowerBound.Fill( 0 );
+	lowerBound[6] = -.05;
+	lowerBound[7] = -.05;
+	lowerBound[8] = -.05;
 
 	newtonOptimizer->SetBoundSelection( boundSelect );
 	newtonOptimizer->SetUpperBound( upperBound );
 	newtonOptimizer->SetLowerBound( lowerBound );
 
-	newtonOptimizer->SetCostFunctionConvergenceFactor( 1.e1 );
-	newtonOptimizer->SetProjectedGradientTolerance( 1e-10 );
+	newtonOptimizer->SetCostFunctionConvergenceFactor( 1 );
+	newtonOptimizer->SetProjectedGradientTolerance( 1e-12 );
 	//~ newtonOptimizer->SetScales( optScales );
 	//~ newtonOptimizer->SetGradientConvergenceTolerance( .001 );
 	//~ newtonOptimizer->SetDefaultStepLength( .001 );
