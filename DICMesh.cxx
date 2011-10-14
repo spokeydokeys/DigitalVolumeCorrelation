@@ -472,7 +472,29 @@ void ExecuteDIC()
 		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
 		this->WriteToLogfile( msg.str() );
 		
-		//if( !strcmp(this->m_Metric->GetNameOfClass(),"MattesMutualInformationImageToImageMetric") ){
+		if( !strcmp(this->m_Registration->GetOptimizer()->GetNameOfClass(),"LBFGSBOptimizer") ){
+			itk::Array< long > boundSelect( this->m_Registration->GetTransform()->GetNumberOfParameters() );
+			itk::Array< double > upperBound( this->m_Registration->GetTransform()->GetNumberOfParameters() );
+			itk::Array< double > lowerBound( this->m_Registration->GetTransform()->GetNumberOfParameters() );
+			
+			boundSelect.Fill( 0 );
+			boundSelect[6] = 2;
+			boundSelect[7] = 2;
+			boundSelect[8] = 2;
+			upperBound.Fill( 0 );
+			typename FixedImageType::SpacingType imageSpacing = this->m_Registration->GetFixedImage()->GetSpacing();
+			upperBound[6] = *displacementData + 2*imageSpacing[0];
+			upperBound[7] = *(displacementData+1) + 2*imageSpacing[1];
+			upperBound[8] = *(displacementData+2) + 2*imageSpacing[2];
+			lowerBound.Fill( 0 );
+			lowerBound[6] = *displacementData - 2*imageSpacing[0];
+			lowerBound[7] = *(displacementData+1) - 2*imageSpacing[1];
+			lowerBound[8] = *(displacementData+2) - 2*imageSpacing[2];
+			
+			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetBoundSelection( boundSelect );
+			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetUpperBound( upperBound );
+			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetLowerBound( lowerBound );
+		}
 			
 		//~ this->m_Metric->ReinitializeSeed();
 		std::cout<<"Number of Fixed Image Samples: "<<this->m_Metric->GetNumberOfPixelsCounted()<<std::endl;

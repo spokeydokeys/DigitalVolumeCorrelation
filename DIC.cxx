@@ -93,14 +93,14 @@ typedef typename	MovingImageReaderType::Pointer								MovingImageReaderPointer;
 typedef	itk::ImageRegistrationMethod< FixedImageType, MovingImageType>			ImageRegistrationMethodType;
 typedef	typename	ImageRegistrationMethodType::Pointer						ImageRegistrationMethodPointer;
 
-//~ typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
-//~ typedef typename	MetricType::Pointer											MetricTypePointer;
-typedef itk::MattesMutualInformationImageToImageMetric< FixedImageType, MovingImageType> MetricType;
+typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
 typedef typename	MetricType::Pointer											MetricTypePointer;
+//~ typedef itk::MattesMutualInformationImageToImageMetric< FixedImageType, MovingImageType> MetricType;
+//~ typedef typename	MetricType::Pointer											MetricTypePointer;
 
 typedef itk::RegularStepGradientDescentOptimizer								OptimizerType;
 typedef typename	OptimizerType::Pointer										OptimizerTypePointer;
-//~ typedef itk::LBFGSBOptimizer														OptimizerType;
+//~ typedef itk::LBFGSBOptimizer													OptimizerType;
 //~ typedef	typename	OptimizerType::Pointer										OptimizerTypePointer;
 
 typedef itk::CenteredEuler3DTransform< double >									TransformType;
@@ -132,8 +132,8 @@ DIC()
 	// setup the registration metric
 	m_Metric				= MetricType::New();
 	m_Metric->UseAllPixelsOn();
-	m_Metric->SetNumberOfHistogramBins( 500 );
-	m_Metric->SetFixedImageSamplesIntensityThreshold ( 0 );
+	//~ m_Metric->SetNumberOfHistogramBins( 500 );
+	m_Metric->SetFixedImageSamplesIntensityThreshold ( 100 );
 	m_Metric->SetUseSequentialSampling( true );
 	m_Transform				= TransformType::New();
 	// Setup the registration optimizer
