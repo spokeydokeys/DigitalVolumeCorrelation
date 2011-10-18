@@ -24,6 +24,7 @@
 #include <vtkUnstructuredGridReader.h>
 #include "itkNormalizedCorrelationImageToImageMetric.h"
 #include "itkLBFGSBOptimizer.h"
+#include <itkBSplineInterpolateImageFunction.h>
 
 
 // the following provides updates for the RegularStep optimizer
@@ -318,46 +319,31 @@ int main(int argc, char **argv)
 	
 	DICMethod->CalculateInitialFixedImageRegionList();
 	DICMethod->CalculateInitialMovingImageRegionList();
-		
-	//~ typedef itk::NormalizedCorrelationImageToImageMetric<FixedImageType, MovingImageType> NormalizedMetricType;
-	//~ NormalizedMetricType::Pointer normalizedMetric = NormalizedMetricType::New();
 	
+	// second round DVC gets a newtonian style optimizer. These are more accurate, but have a smaller
+	// radius of convergence, that is why it is not used for the inital DVC
 	typedef itk::LBFGSBOptimizer NewtonOptimizerType;
 	NewtonOptimizerType::Pointer newtonOptimizer = NewtonOptimizerType::New();
-	//~ NewtonOptimizerType::BoundSelectionType boundSelect( transform->GetNumberOfParameters() );
-	//~ NewtonOptimizerType::BoundValueType upperBound( transform->GetNumberOfParameters() );
-	//~ NewtonOptimizerType::BoundValueType lowerBound( transform->GetNumberOfParameters() );
 	
 	NOCommandIterationUpdate::Pointer nOObserver = NOCommandIterationUpdate::New();	// thes lines will make the optimizer print out its
 	nOObserver->SetLogfileName( DICMethod->GetLogfileName() );					// displacement as it goes.  They can be removed.
 	newtonOptimizer->AddObserver( itk::IterationEvent(), nOObserver );	
 
-	//~ boundSelect.Fill( 0 );
-	//~ boundSelect[6] = 2;
-	//~ boundSelect[7] = 2;
-	//~ boundSelect[8] = 2;
-	//~ upperBound.Fill(  0 );
-	//~ upperBound[6] = .2;
-	//~ upperBound[7] = .2;
-	//~ upperBound[8] = .2;
-	//~ lowerBound.Fill( 0 );
-	//~ lowerBound[6] = -.05;
-	//~ lowerBound[7] = -.05;
-	//~ lowerBound[8] = -.05;
-
-	//~ newtonOptimizer->SetBoundSelection( boundSelect );
-	//~ newtonOptimizer->SetUpperBound( upperBound );
-	//~ newtonOptimizer->SetLowerBound( lowerBound );
-
-	newtonOptimizer->SetCostFunctionConvergenceFactor( 1e7 );
-	newtonOptimizer->SetProjectedGradientTolerance( 1e-8 );
-	//~ newtonOptimizer->SetScales( optScales );
-	//~ newtonOptimizer->SetGradientConvergenceTolerance( .001 );
-	//~ newtonOptimizer->SetDefaultStepLength( .001 );
+	newtonOptimizer->SetCostFunctionConvergenceFactor( 1e12 );
+	newtonOptimizer->SetProjectedGradientTolerance( 1e-6 );
 	
-	//~ registration->SetMetric( normalizedMetric );
 	registration->SetOptimizer( newtonOptimizer );
 	
+	// second round DVC gets a bspline interpolator. These are more accurate, but have a huge computational
+	// cost, so the linear is used to get close in the first round
+	
+	typedef itk::BSplineInterpolateImageFunction<FixedImageType, double, double>  BSplineInterpolatorType;
+	BSplineInterpolatorType::Pointer	bSplineInterpolator = BSplineInterpolatorType::New();
+	bSplineInterpolator->SetSplineOrder( 4 );
+	
+	registration->SetInterpolator( bSplineInterpolator );
+	
+	// Execute the second round DVC
 	DICMethod->ExecuteDIC();
 	//~ 
 	msg.str("");
