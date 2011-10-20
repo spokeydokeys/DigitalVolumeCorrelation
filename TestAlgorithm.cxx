@@ -180,19 +180,19 @@ int main(int argc, char** argv)
 	DICMethod->SetOuputDirectory( outputDir );
 	
 	
-	FixedReaderType::Pointer fixedReader = FixedReaderType::New();
+	/*FixedReaderType::Pointer fixedReader = FixedReaderType::New();
 	MovingReaderType::Pointer movingReader = MovingReaderType::New();	
 	fixedReader->SetFileName( argv[2] );
 	movingReader->SetFileName( argv[3] );
 	fixedReader->Update();
 	movingReader->Update();
 	
-	/*std::string logfileName = "/home/seth/logfile.txt";*/
+	//~ std::string logfileName = "/home/seth/logfile.txt";
 	DICMethod->SetFixedImage(fixedReader->GetOutput() );
 	DICMethod->SetMovingImage(movingReader->GetOutput() );
 	
 	
-	DICMethod->SetInterrogationRegionRadius(36);
+	DICMethod->SetInterrogationRegionRadius(36);*/
 		
 	// import a vtkUnstructuredGrid.
 	vtkSmartPointer<vtkUnstructuredGridReader>		vtkReader= vtkSmartPointer<vtkUnstructuredGridReader>::New();
@@ -200,7 +200,7 @@ int main(int argc, char** argv)
 	vtkReader->Update();
 	DICMethod->SetDataImage( vtkReader->GetOutput() );
 	
-	// get the registration method from the DVC algorithm
+	/*// get the registration method from the DVC algorithm
 	DICType::ImageRegistrationMethodPointer		registration = DICMethod->GetRegistrationMethod();
 	DICType::TransformTypePointer				transform = DICMethod->GetTransform();
 	DICType::OptimizerTypePointer				optimizer = DICMethod->GetOptimizer();
@@ -273,7 +273,12 @@ int main(int argc, char** argv)
 	DICMethod->CalculateInitialFixedImageRegionList();
 	DICMethod->CalculateInitialMovingImageRegionList();
 	
-	DICMethod->ExecuteDIC();
+	DICMethod->ExecuteDIC();*/
+	
+	DICMethod->WeightedMovingAverageFilter( 10, 3, 0);
+	
+	DICMethod->GetStrains();
+	DICMethod->GetPrincipalStrains();	
 	
 	std::string outFile = outputDir + "/result2.vtk";	
 	DICMethod->WriteMeshToVTKFile( outFile );	

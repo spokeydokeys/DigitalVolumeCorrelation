@@ -305,6 +305,8 @@ int main(int argc, char **argv)
 		
 		std::string debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC.vtk";
 		DICMethod->WriteMeshToVTKFile( debugFile );
+		
+
 	
 		msg.str("");
 		msg <<"Starting with the second round DVC"<<std::endl;
@@ -313,9 +315,15 @@ int main(int argc, char **argv)
 	
 	if ( restartFile ){
 		msg.str("");
-		msg<<"Restarting by skipping the global registration and inital DIC."<<std::endl<<std::endl;
+		msg<<"Restarting by skipping the global registration and inital DIC."<<std::endl;
+		msg<<"The input image will still be smoothed before starting the second round DVC."<<std::endl<<std::endl;
 		DICMethod->WriteToLogfile( msg.str() );
 	}
+	
+	msg.str("");
+	msg << "Smoothing the image." <<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->WeightedMovingAverageFilter(10, 2, 0);
 	
 	DICMethod->CalculateInitialFixedImageRegionList();
 	DICMethod->CalculateInitialMovingImageRegionList();

@@ -945,6 +945,60 @@ void MedianImageFilter(unsigned int N)
 	}
 }
 
+/** A function to smooth the image using a weighted moving average using
+ * a Gaussian kernel for weight calculation. The function is given R, 
+ * the radius of points to consider; sigma, the standard deviation of the
+ * of the Gaussian kernel; and mean, the mean of the Gaussian kernel in
+ * terms of distance from the point being averaged (this will in 99.99%
+ * of cases need to be set to 0).*/
+void WeightedMovingAverageFilter( double R , double sigma, double mean )
+{
+	// create a duplicate of the data image
+	DataImagePointer tempImage = DataImagePointer::New();
+	tempImage->DeepCopy(this->m_DataImage);
+	// loop through the points of both the images
+	unsigned int nPoints = tempImage->GetNumberOfPoints();
+	for( unsigned int i = 0; i < nPoints; ++i ){
+		double *newPixel = new double[3];
+		newPixel = CalculateWeightedMovingAverage( R, sigma, mean, i, tempImage );
+		// set the data image pixel to the value of the new pixel
+		this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i, newPixel );
+	}
+}
+
+double* CalculateWeightedMovingAverage( double R, double sigma, double mean, unsigned int pointId, DataImagePointer image )
+{
+	// find the points withing the specified radius of the current point position		
+	double *cPoint = image->GetPoint( pointId ); // current point position
+	vtkIdList *pointList = vtkIdList::New(); // id list to hold ids of the closest points
+	this->m_KDTree->FindPointsWithinRadius( R, cPoint, pointList );
+	// move through the points in the list and use them to calculate the new point value
+	unsigned int N = pointList->GetNumberOfIds();
+	double totalNumerator[3] = { 0, 0, 0 };
+	double totalDenominator = 0;
+	for( unsigned int j = 0; j < N; ++j){
+		vtkIdType cId = pointList->GetId( j );
+		// calcualate the weight based on the distance and the gaussian parameters
+		double *tempLocation = image->GetPoint( cId );
+		double cDistance = sqrt( pow((*tempLocation-*cPoint),2) + pow((*(tempLocation+1)-(*cPoint+1)),2) + pow((*(tempLocation+2)-(*cPoint+2)),2) );
+		double weight = 1/(2.50662827*sqrt(sigma))*pow(2.718281828,-pow((cDistance-mean),2)/(2*sigma*sigma)); // 1/sqrt(2*pi*sigma)*e^(-(X-mean)^2/(s*sigma^2)) (the Gaussian distribution)
+		// add the weight to the total denominator
+		totalDenominator = totalDenominator + weight;
+		// add to the numerators
+		double *tempPixel = image->GetPointData()->GetArray("Displacement")->GetTuple( cId ); // the original data in the current point
+		totalNumerator[0] = totalNumerator[0] + weight * *tempPixel;
+		totalNumerator[1] = totalNumerator[1] + weight * *(tempPixel+1);
+		totalNumerator[2] = totalNumerator[2] + weight * *(tempPixel+2);
+	}
+	// use the total numerators and denominator to calculate the new pixel
+	double *newPixel = new double[3];
+	*newPixel = totalNumerator[0] / totalDenominator;
+	*(newPixel+1) = totalNumerator[1] / totalDenominator;
+	*(newPixel+2) = totalNumerator[2] / totalDenominator;
+	
+	return newPixel;
+}
+
 /** This function will use the image registration method from DIC to 
  * align the images in the region bounded by m_DataImage's bounding box.*/
 void GlobalRegistration()
