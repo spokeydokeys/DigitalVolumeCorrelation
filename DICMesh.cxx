@@ -415,9 +415,11 @@ void ExecuteDIC()
 	
 	if( this->m_FixedImageRegionList.empty() ){
 		this->CalculateInitialFixedImageRegionList();
+		std::cout<<"Fixed Image List Calculated"<<std::endl;
 	}
 	if( this->m_MovingImageRegionList.empty() ){
 		this->CalculateInitialMovingImageRegionList();
+		std::cout<<"Moving Image List Calculated"<<std::endl;
 	}
 	
 	unsigned int nMeshPoints = this->m_pointsList->GetNumberOfIds();

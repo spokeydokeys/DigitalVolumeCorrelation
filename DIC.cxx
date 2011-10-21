@@ -41,6 +41,7 @@
 
 #include <itkMattesMutualInformationImageToImageMetric.h>
 #include "itkLBFGSBOptimizer.h"
+#include <itkMeanSquaresImageToImageMetric.h>
 
 template <typename TFixedImage, typename TMovingImage>
 class DIC
@@ -93,10 +94,10 @@ typedef typename	MovingImageReaderType::Pointer								MovingImageReaderPointer;
 typedef	itk::ImageRegistrationMethod< FixedImageType, MovingImageType>			ImageRegistrationMethodType;
 typedef	typename	ImageRegistrationMethodType::Pointer						ImageRegistrationMethodPointer;
 
-typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
-typedef typename	MetricType::Pointer											MetricTypePointer;
+//~ typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
 //~ typedef itk::MattesMutualInformationImageToImageMetric< FixedImageType, MovingImageType> MetricType;
-//~ typedef typename	MetricType::Pointer											MetricTypePointer;
+typedef itk::MeanSquaresImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
+typedef typename	MetricType::Pointer											MetricTypePointer;
 
 typedef itk::RegularStepGradientDescentOptimizer								OptimizerType;
 typedef typename	OptimizerType::Pointer										OptimizerTypePointer;
@@ -124,7 +125,7 @@ DIC()
 	m_CurrentMovingImage	= 0;
 
 	UseWholeMovingImage		= false;
-	m_FixedIRMult			= 2; // default size of the moving IR is 2.5 times the size of the fixed IR
+	m_FixedIRMult			= 1; // default size of the moving IR is 2.5 times the size of the fixed IR
 	
 	m_FixedROIFilter		= FixedROIFilterType::New();
 	m_MovingROIFilter		= MovingROIFilterType::New();
@@ -132,9 +133,8 @@ DIC()
 	// setup the registration metric
 	m_Metric				= MetricType::New();
 	m_Metric->UseAllPixelsOn();
-	//~ m_Metric->SetNumberOfHistogramBins( 500 );
-	m_Metric->SetFixedImageSamplesIntensityThreshold ( 100 );
-	m_Metric->SetUseSequentialSampling( true );
+	//~ m_Metric->SetFixedImageSamplesIntensityThreshold ( 100 );
+	//~ m_Metric->SetUseSequentialSampling( true );
 	m_Transform				= TransformType::New();
 	// Setup the registration optimizer
 	m_Optimizer				= OptimizerType::New();
@@ -459,9 +459,9 @@ void SetMovingROIImage( MovingImagePointer roiImage )
 /** A function to get the registration of the two regions. */
 void UpdateRegionRegistration()
 {
-	//~ this->m_Registration->SetFixedImage( this->m_CurrentFixedImage );
-	//~ this->m_Registration->SetMovingImage( this->m_CurrentMovingImage );
-
+	//~ this->m_Metric->SetFixedImageRegion(  m_Registration->GetFixedImage()->GetBufferedRegion()  );
+	//~ this->m_Metric->Initialize();
+	
 	try
 	{
 		std::stringstream msg("");

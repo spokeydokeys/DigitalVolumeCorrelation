@@ -283,6 +283,11 @@ int main(int argc, char **argv)
 	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration*/
 	if ( !restartFile ) DICMethod->GlobalRegistration();
 	
+	typedef itk::BSplineInterpolateImageFunction<FixedImageType, double, double>  BSplineInterpolatorType;
+	BSplineInterpolatorType::Pointer	bSplineInterpolator = BSplineInterpolatorType::New();
+	bSplineInterpolator->SetSplineOrder( 4 );
+	registration->SetInterpolator( bSplineInterpolator );
+	
 	// speed things us for the actual registration
 	optimizer->SetMaximumStepLength( 0.001 ); // smaller steps for the DIC
 	optimizer->SetMinimumStepLength( 0.0005); // increased tolerace for the DIC.
@@ -342,14 +347,22 @@ int main(int argc, char **argv)
 	
 	registration->SetOptimizer( newtonOptimizer );
 	
+	typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType > NormalizedMetricType;
+	NormalizedMetricType::Pointer normalMetric = NormalizedMetricType::New();
+	normalMetric->SetFixedImageSamplesIntensityThreshold ( 100 );
+	normalMetric->SetUseSequentialSampling( true );
+	
+	registration->SetMetric( normalMetric );
+	registration->SetTransform( transform );
+	
 	// second round DVC gets a bspline interpolator. These are more accurate, but have a huge computational
 	// cost, so the linear is used to get close in the first round
 	
-	typedef itk::BSplineInterpolateImageFunction<FixedImageType, double, double>  BSplineInterpolatorType;
-	BSplineInterpolatorType::Pointer	bSplineInterpolator = BSplineInterpolatorType::New();
-	bSplineInterpolator->SetSplineOrder( 4 );
-	
-	registration->SetInterpolator( bSplineInterpolator );
+	//~ typedef itk::BSplineInterpolateImageFunction<FixedImageType, double, double>  BSplineInterpolatorType;
+	//~ BSplineInterpolatorType::Pointer	bSplineInterpolator = BSplineInterpolatorType::New();
+	//~ bSplineInterpolator->SetSplineOrder( 4 );
+	//~ 
+	//~ registration->SetInterpolator( bSplineInterpolator );
 	
 	// Execute the second round DVC
 	DICMethod->ExecuteDIC();
