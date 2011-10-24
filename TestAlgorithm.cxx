@@ -275,9 +275,11 @@ int main(int argc, char** argv)
 	
 	DICMethod->ExecuteDIC();*/
 	
-	DICMethod->WeightedMovingAverageFilter( 10, 3, 0);
+	//~ DICMethod->WeightedMovingAverageFilter( 10, 3, 0);
 	
-	DICMethod->GetStrains();
+	//~ DICMethod->GetStrains();
+	
+	DICMethod->StrainWeightedMovingAverageFilter(0, 2, 0);
 	DICMethod->GetPrincipalStrains();	
 	
 	std::string outFile = outputDir + "/result2.vtk";	

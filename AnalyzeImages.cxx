@@ -328,7 +328,7 @@ int main(int argc, char **argv)
 	msg.str("");
 	msg << "Smoothing the image." <<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->WeightedMovingAverageFilter(10, 2, 0);
+	DICMethod->DisplacementWeightedMovingAverageFilter(10, 2, 0);
 	
 	DICMethod->CalculateInitialFixedImageRegionList();
 	DICMethod->CalculateInitialMovingImageRegionList();
@@ -370,6 +370,12 @@ int main(int argc, char **argv)
 	msg.str("");
 	msg<<"Second Round Finished"<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
+	
+	msg.str("");
+	msg<<"Checking for bad pixels and re-analyzing"<<std::endl;
+	DICMethod->WriteToLogfile( msg.str() );
+	DICMethod->CreateNewRegionListFromBadPixels();
+	DICMethod->ExecuteDIC();	
 	
 	//~ msg.str("");
 	//~ msg << "Checking for bad pixels."<<std::endl;
@@ -428,6 +434,13 @@ int main(int argc, char **argv)
 	DICMethod->WriteToLogfile( msg.str() );
 	std::string outputFile = outputDir + "/Final_DIC_Result.vtk";
 	DICMethod->WriteMeshToVTKFile( outputFile );
+	
+	msg.str("");
+	msg << "Smoothing strain tensor and recalculating the principal strains."<<std::endl;
+	DICMethod->StrainWeightedMovingAverageFilter(0, 2, 0);
+	DICMethod->GetPrincipalStrains();
+	outputFile = outputDir + "/Final_DIC_Smoothed_Result.vtk";
+	DICMethod->WriteMeshToVTKFile( outputFile );	
 	
 	std::time( &rawTime );
 	timeValue = std::localtime( &rawTime );
