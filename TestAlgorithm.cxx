@@ -156,9 +156,9 @@ void WriteToLogfile( std::string characters )
 
 int main(int argc, char** argv)
 {
-	if( argc < 5 || argc > 5 ){
+	if( argc < 6 || argc > 6 ){
 		std::cout<<"Fatal Error: Incorrect Usage."<<std::endl;
-		std::cout<<"Usage:"<<std::endl<<argv[0]<<" [Input Unstructured Grid] [Fixed Image] [Moving Image] [Output Path]"<<std::endl;
+		std::cout<<"Usage:"<<std::endl<<argv[0]<<" [Input Unstructured Grid] [Fixed Image] [Moving Image] [Output Path] [Smoothing Radius]"<<std::endl;
 		std::cout<<"Exiting"<<std::endl;
 		return EXIT_FAILURE;
 	}
@@ -279,10 +279,21 @@ int main(int argc, char** argv)
 	
 	//~ DICMethod->GetStrains();
 	
-	DICMethod->StrainWeightedMovingAverageFilter(0, 2, 0);
+	//~ vtkSmartPointer<vtkIdList> replacedPixels = vtkSmartPointer<vtkIdList>::New();
+	//~ DICMethod->ReplaceBadDisplacementPixels( atof(argv[5])*2, 0, replacedPixels);
+	//~ std::cout<<replacedPixels->GetNumberOfIds()<<" pixels replaced"<<std::endl;
+	std::cout<<"Before Get Strains"<<std::endl;
+	DICMethod->GetStrains();
+	std::cout<<"After Get Strains"<<std::endl;
+	std::string outFile = "/home/seth/Desktop/afterGetStrains.vtk";
+	DICMethod->WriteMeshToVTKFile( outFile );
+	//~ DICMethod->StrainWeightedMovingAverageFilter( atof(argv[5]), 0);
+	//DICMethod->StrainWeightedMovingAverageFilter(0, atof(argv[5]), 0);	
+	//DICMethod->ReplaceBadStrainPixels(0, atof(argv[5]), 0);
+
 	DICMethod->GetPrincipalStrains();	
 	
-	std::string outFile = outputDir + "/result2.vtk";	
+	outFile = outputDir;// + "/result2.vtk";	
 	DICMethod->WriteMeshToVTKFile( outFile );	
 	
 	//~ DICMethod->CreateNewRegionListFromBadPixels();

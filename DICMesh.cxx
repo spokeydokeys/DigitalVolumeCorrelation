@@ -28,10 +28,6 @@
 #include <vtkDoubleArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkPoints.h>
-#include <vtkQuadraticTetra.h>
-#include <vtkQuadraticTriangle.h>
-#include <vtkQuadraticEdge.h>
-#include <vtkVertex.h>
 #include <vtkCellArray.h>
 #include <vtkUnstructuredGridWriter.h>
 #include <vtkPointData.h>
@@ -47,7 +43,6 @@
 
 #include <itkImageFileWriter.h>
 #include <itkShrinkImageFilter.h>
-
 
 template<typename TFixedImage, typename TMovingImage>
 class DICMesh : public DIC<TFixedImage, TMovingImage>
@@ -85,7 +80,8 @@ DICMesh()
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
 	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
-	m_errorTolerance = 2; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
+	m_displacementErrorTolerance = 2; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
+	m_strainErrorTolerance = 1;	
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
 	m_maxMeticValue = -0.00; // TODO: make this setable using a method
 	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
@@ -94,24 +90,25 @@ DICMesh()
 /** Destructor **/
 ~DICMesh() {}
 
-/** This function will compile a list of valid fixed image regions.*/
+/** This function will compile a list of valid moving image regions.*/
 void CalculateInitialMovingImageRegionList()
 {
 	vtkIdType	numberOfNodes = m_DataImage->GetNumberOfPoints();
 	this->m_MovingImageRegionList.clear();
 	
-	for ( int i = 0; i < numberOfNodes; ++i){ // Iterate through the points in the point set
+	// visit every point in the image
+	for ( int i = 0; i < numberOfNodes; ++i){ 
 		double *currentLocation = new double[3];
-		currentLocation = this->CalculateFixedRegionLocationFromIndex( i );
-		//~ m_DataImage->GetPoint( i, currentPoint ); // get the current node location
+		currentLocation = this->GetMovingImageRegionLocationFromIndex( i ); // get the current node location
 		
 		MovingImageRegionType *currentRegion = new MovingImageRegionType;
-		this->GetMovingImageRegionFromLocation( currentRegion, currentLocation ); // get the current region
-		this->PushRegionOntoMovingImageRegionList( currentRegion );
+		this->GetMovingImageRegionFromLocation( currentRegion, currentLocation ); // get the region
+		this->PushRegionOntoMovingImageRegionList( currentRegion ); // add the region to the moving image region list.
 	}
 }
 
-double *CalculateMovingImageRegionLocationFromIndex( vtkIdType i)
+/** Given an intex, this will calcualted the center of a valid moving image region.*/
+double *GetMovingImageRegionLocationFromIndex( vtkIdType i)
 {
 	double *currentPoint	= new double[3];
 	double *currentValue	= new double[3];
@@ -125,39 +122,21 @@ double *CalculateMovingImageRegionLocationFromIndex( vtkIdType i)
 	return currentLocation;
 }
 
-/** A function to calculate the initial fixed image region list.**/
+/** A function to calculate the initial fixed image region list. */
 void CalculateInitialFixedImageRegionList()
 {
-	vtkIdType	numberOfNodes = m_DataImage->GetNumberOfPoints();
 	this->m_FixedImageRegionList.clear();
 	this->m_pointsList->Reset();
 	
-	for (int i = 0; i < numberOfNodes; ++i){
+	for (int i = 0; i < this->m_DataImage->GetNumberOfPoints(); ++i){
 		double *currentLocation = new double[3];
-		m_DataImage->GetPoint( i, currentLocation );
-		//~ currentLocation = this->CalculateFixedRegionLocationFromIndex( i );
-		
+		m_DataImage->GetPoint( i, currentLocation ); // the fixed image region is always centered on the current mesh point
+	
 		FixedImageRegionType	*currentRegion = new FixedImageRegionType;
 		this->GetFixedImageRegionFromLocation( currentRegion, currentLocation );
 		this->PushRegionOntoFixedImageRegionList( currentRegion );
 		this->m_pointsList->InsertNextId( i );
 	}
-}
-
-/** A function that will calculate the fixed image region initial
- * location from an index. */
-double* CalculateFixedRegionLocationFromIndex( vtkIdType i )
-{
-	double *currentPoint	= new double[3];
-	double *currentValue	= new double[3];
-	double *currentLocation	= new double[3];
-	m_DataImage->GetPoint( i, currentPoint ); // get the current point location
-	this->m_DataImage->GetPointData()->GetArray("Displacement")->GetTuple( i, currentValue );
-	*currentLocation		= *currentPoint		+ *currentValue; // set the current point to the original local to the disp
-	*(currentLocation +1)	= *(currentPoint +1)+ *(currentValue +1);
-	*(currentLocation +2)	= *(currentPoint +2)+ *(currentValue +2);
-	
-	return currentLocation;
 }
 
 /** A function to read a gmsh file. */
@@ -219,29 +198,29 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 		unsigned int elNo, elTyp;
 		gmshFileInput >> elNo >> elTyp;
 		
-		/*if (elTyp == 1){ // 2 node line
-			unsigned int elNTags;
-			gmshFileInput >> elNTags;
-			for (unsigned int j = 0; j < elNTags+1; ++j){
-				gmshFileInput.ignore(255,' ');
-			}
-			int nodes[2];
-			gmshFileInput >> nodes[0] >> nodes[1];
-			vtkIdType ptIds[] = { nodes[0]-1, nodes[1]-1 };
-			meshImage->InsertNextCell(3, 2, ptIds);
-		}*/
+		//~ if (elTyp == 1){ // 2 node line
+			//~ unsigned int elNTags;
+			//~ gmshFileInput >> elNTags;
+			//~ for (unsigned int j = 0; j < elNTags+1; ++j){
+				//~ gmshFileInput.ignore(255,' ');
+			//~ }
+			//~ int nodes[2];
+			//~ gmshFileInput >> nodes[0] >> nodes[1];
+			//~ vtkIdType ptIds[] = { nodes[0]-1, nodes[1]-1 };
+			//~ meshImage->InsertNextCell(3, 2, ptIds);
+		//~ }
 		
-		/*if (elTyp == 2){ // 3 node triangle
-			unsigned int elNTags;
-			gmshFileInput >> elNTags;
-			for (unsigned int j = 0; j < elNTags+1; ++j){
-				gmshFileInput.ignore(255,' ');
-			}
-			int nodes[3];
-			gmshFileInput >> nodes[0] >> nodes[1] >> nodes[2];
-			vtkIdType ptIds[] = { nodes[0]-1, nodes[1]-1, nodes[2]-1 };
-			meshImage->InsertNextCell(5, 3, ptIds);
-		}*/
+		//~ if (elTyp == 2){ // 3 node triangle
+			//~ unsigned int elNTags;
+			//~ gmshFileInput >> elNTags;
+			//~ for (unsigned int j = 0; j < elNTags+1; ++j){
+				//~ gmshFileInput.ignore(255,' ');
+			//~ }
+			//~ int nodes[3];
+			//~ gmshFileInput >> nodes[0] >> nodes[1] >> nodes[2];
+			//~ vtkIdType ptIds[] = { nodes[0]-1, nodes[1]-1, nodes[2]-1 };
+			//~ meshImage->InsertNextCell(5, 3, ptIds);
+		//~ }
 		
 		if (elTyp == 4){ // linear tet element
 			unsigned int elNTags;
@@ -255,26 +234,26 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 			meshImage->InsertNextCell(10, 4, ptIds);
 		}
 		
-		/*if (elTyp == 8){ // quadratic line element
-			std::stringstream msg("");
-			msg << "Warning: Qadratic line element in gmsh file."<<std::endl << "Qadratic lines are not supported" <<std::endl <<
-				"Continuing with the file input."<<std::endl; // not supported because they give bad jaboians in the strain calcs
-			this->WriteToLogfile( msg.str() );
-			gmshFileInput.ignore(255,'\n');
-			continue;
-		}*/
+		//~ if (elTyp == 8){ // quadratic line element
+			//~ std::stringstream msg("");
+			//~ msg << "Warning: Qadratic line element in gmsh file."<<std::endl << "Qadratic lines are not supported" <<std::endl <<
+				//~ "Continuing with the file input."<<std::endl; // not supported because they give bad jaboians in the strain calcs
+			//~ this->WriteToLogfile( msg.str() );
+			//~ gmshFileInput.ignore(255,'\n');
+			//~ continue;
+		//~ }
 		
-		/*if (elTyp == 9){ //quadratic triangle element
-			unsigned int elNTags;
-			gmshFileInput >> elNTags;
-			for (unsigned int j = 0; j< elNTags+1; ++j){ //ignore tags
-				gmshFileInput.ignore(255,' ');
-			}
-			int nodes[6];
-			gmshFileInput >> nodes[0] >> nodes[1] >> nodes[2] >> nodes[3] >> nodes[4] >> nodes[5];
-			vtkIdType ptIds[] = { nodes[0]-1, nodes[1]-1, nodes[2]-1, nodes[3]-1, nodes[4]-1, nodes[5]-1};
-			meshImage->InsertNextCell(22,6,ptIds);
-		}*/
+		//~ if (elTyp == 9){ //quadratic triangle element
+			//~ unsigned int elNTags;
+			//~ gmshFileInput >> elNTags;
+			//~ for (unsigned int j = 0; j< elNTags+1; ++j){ //ignore tags
+				//~ gmshFileInput.ignore(255,' ');
+			//~ }
+			//~ int nodes[6];
+			//~ gmshFileInput >> nodes[0] >> nodes[1] >> nodes[2] >> nodes[3] >> nodes[4] >> nodes[5];
+			//~ vtkIdType ptIds[] = { nodes[0]-1, nodes[1]-1, nodes[2]-1, nodes[3]-1, nodes[4]-1, nodes[5]-1};
+			//~ meshImage->InsertNextCell(22,6,ptIds);
+		//~ }
 		
 		if (elTyp == 11){ // quatratic tet element
 			unsigned int elNTags;
@@ -288,26 +267,27 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 			meshImage->InsertNextCell(24, 10, ptIds);
 		}
 		
-		/*if (elTyp == 15){ // 3D vertex
-			unsigned int elNTags;
-			gmshFileInput >> elNTags;
-			for (unsigned int j = 0; j< elNTags+1; ++j){ //ignore tags
-				gmshFileInput.ignore(255,' ');
-			}
-			int nodes[1];
-			gmshFileInput >> nodes[0];
-			vtkIdType ptIds[] = { nodes[0]-1 };
-			meshImage->InsertNextCell(1,1,ptIds);
-		}*/
+		//~ if (elTyp == 15){ // 3D vertex
+			//~ unsigned int elNTags;
+			//~ gmshFileInput >> elNTags;
+			//~ for (unsigned int j = 0; j< elNTags+1; ++j){ //ignore tags
+				//~ gmshFileInput.ignore(255,' ');
+			//~ }
+			//~ int nodes[1];
+			//~ gmshFileInput >> nodes[0];
+			//~ vtkIdType ptIds[] = { nodes[0]-1 };
+			//~ meshImage->InsertNextCell(1,1,ptIds);
+		//~ }
 		
-		/*if (elTyp != 1 && elTyp != 2 && elTyp != 4 && elTyp != 8 && elTyp != 9 && elTyp != 11 && elTyp != 15){ // only support the above element types
-			std::stringstream msg("");
-			msg << "Unsupported element types detected!"<<std::endl << "Unsupported type = "<<elTyp<<std::endl <<
-				"Continuing with the file input."<<std::endl;
-			this->WriteToLogfile( msg.str() );
-			gmshFileInput.ignore(255,'\n');
-			continue;
-		}*/
+		//~ if (elTyp != 1 && elTyp != 2 && elTyp != 4 && elTyp != 8 && elTyp != 9 && elTyp != 11 && elTyp != 15){ // only support the above element types
+			//~ std::stringstream msg("");
+			//~ msg << "Unsupported element types detected!"<<std::endl << "Unsupported type = "<<elTyp<<std::endl <<
+				//~ "Continuing with the file input."<<std::endl;
+			//~ this->WriteToLogfile( msg.str() );
+			//~ gmshFileInput.ignore(255,'\n');
+			//~ continue;
+		//~ }
+		
 		if (elTyp != 4 && elTyp != 11){ // only support the above element types
 			std::stringstream msg("");
 			msg << "Unsupported element types detected!"<<std::endl << "Unsupported type = "<<elTyp<<std::endl <<
@@ -329,11 +309,8 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 /** A function to fill a mesh with an single value. */
 void SetMeshInitialValue( double initialData[] )
 {
-	vtkSmartPointer<vtkDataArray> pointData = this->m_DataImage->GetPointData()->GetArray("Displacement"); // get the data array by name
-	vtkIdType numberOfNodes = pointData->GetNumberOfTuples();
-	
-	for ( unsigned int i = 0; i < numberOfNodes; ++i ){
-		pointData->SetTuple( i , initialData );
+	for ( unsigned int i = 0; i < this->m_DataImage->GetNumberOfPoints(); ++i ){
+		this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i , initialData );
 	}
 
 }
@@ -344,31 +321,31 @@ void GetMeshPixelValueFromIndex( vtkIdType index, double *pixel )
 	this->m_DataImage->GetPointData()->GetArray("Displacement")->GetTuple( index, pixel );
 }
 
-/** Get the value of the optimizer at a certain point. **/
+/** Get the value of the optimizer at a certain point. */
 void GetMeshPixelOptimizerFromIndex( vtkIdType index, double *opt )
 {
 	this->m_DataImage->GetPointData()->GetArray("Optimizer Value")->GetTuple( index, opt );
 }
 
-/** Set a pixel value in the mesh using an index*/
+/** Set a pixel value in the mesh using an index */
 void SetMeshPixelValueFromIndex(vtkIdType index, double *pixel )
 {
 	this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( index, pixel );
 }
 
-/** Set the value of the optimizer at a certain point. **/
+/** Set the value of the optimizer at a certain point. */
 void SetMeshPixelOptimizerFromIndex( vtkIdType index, double *opt )
 {
 	this->m_DataImage->GetPointData()->GetArray("Optimizer Value")->SetTuple( index, opt );
 }
 
-/** Get a point by index from the mesh.**/
+/** Get a point by index from the mesh. */
 void GetMeshPointLocationFromIndex( vtkIdType index, double  *point )
 {
 	this->m_DataImage->GetPoint(index,point);
 }
 
-/** Set the data Image. **/
+/** Set the data Image. */
 void SetDataImage( vtkUnstructuredGrid *initialDataImage )
 {
 	if (this->m_DataImage.GetPointer() != initialDataImage){
@@ -377,7 +354,7 @@ void SetDataImage( vtkUnstructuredGrid *initialDataImage )
 	this->KDTreeSetAndBuild();
 }
 
-/** get the data image. **/
+/** Get the pointer to the data image. */
 DataImagePointer GetDataImage()
 {
 	return this->m_DataImage;
@@ -386,7 +363,7 @@ DataImagePointer GetDataImage()
 /** a function to execute the analysis. */
 void ExecuteDIC()
 {
-	std::stringstream msg("");
+	std::stringstream msg(""); // test if everything is set
 	if( !this->m_Registration ){
 		msg.str("");
 		msg << "Registration not set.  Please define and set the\nregistration using the SetRegistrationMethod() method.\n";
@@ -413,31 +390,31 @@ void ExecuteDIC()
 		std::abort();		
 	}
 	
-	if( this->m_FixedImageRegionList.empty() ){
+	if( this->m_FixedImageRegionList.empty() ){ // if the region list is empty, create full region lists
 		this->CalculateInitialFixedImageRegionList();
-		std::cout<<"Fixed Image List Calculated"<<std::endl;
 	}
 	if( this->m_MovingImageRegionList.empty() ){
 		this->CalculateInitialMovingImageRegionList();
-		std::cout<<"Moving Image List Calculated"<<std::endl;
 	}
-	
-	unsigned int nMeshPoints = this->m_pointsList->GetNumberOfIds();
-	struct tm * timeValue;
+		
+	struct tm * timeValue; // record the time
 	std::time_t rawTime;
 	std::time( &rawTime );
 	timeValue = std::localtime( &rawTime );
 	msg.str("");
 	msg << "Starting DIC at: "<<std::asctime( timeValue )<<std::endl;
 	this->WriteToLogfile( msg.str() );
+	
+	// visit every point in the points list
+	unsigned int nMeshPoints = this->m_pointsList->GetNumberOfIds();
 	for( unsigned int i = 0; i<nMeshPoints; ++i){
 		vtkIdType pointId = this->m_pointsList->GetId( i );
-				
+		
 		msg.str("");
 		msg << "Starting image registraion for point: "<<i+1<<" of "<<nMeshPoints<<" (mesh index "<<pointId<<")"<<std::endl;
 		this->WriteToLogfile( msg.str() );
-				
-		std::time_t rawTime;
+		
+		std::time_t rawTime; // record the time for each DVC
 		struct tm * timeValue;
 		std::time( &rawTime );
 		timeValue = std::localtime( &rawTime );
@@ -445,28 +422,29 @@ void ExecuteDIC()
 		msg << "Time: "<<std::asctime( timeValue );
 		this->WriteToLogfile( msg.str() );
 		
-
-		FixedImageRegionType	*fixedRegion = new FixedImageRegionType ;
+		FixedImageRegionType	*fixedRegion = new FixedImageRegionType ; // get the fixed image from the fixed image list
 		FixedImagePointer		fixedImage;
 		fixedRegion = this->GetFixedImageRegionFromIndex( i );
 		fixedImage = this->GetFixedROIAsImage( fixedRegion );
 		this->SetFixedROIImage( fixedImage );
 		
-		MovingImageRegionType	*movingRegion = new MovingImageRegionType;
+		MovingImageRegionType	*movingRegion = new MovingImageRegionType; // get the moving image from the moving image list
 		MovingImagePointer		movingImage;
 		movingRegion = this->GetMovingImageRegionFromIndex( i );
 		movingImage = this->GetMovingROIAsImage( movingRegion );
 		this->SetMovingROIImage( movingImage );
 		
-		this->SetTransformToIdentity();
+		this->SetTransformToIdentity(); // Set the transform to do nothing
 		
-		this->m_TransformInitializer->SetFixedImage( this->m_Registration->GetFixedImage() );
+		// initialize the transform to perform rotations about the fixed region center
+		this->m_TransformInitializer->SetFixedImage( this->m_Registration->GetFixedImage() ); 
 		this->m_TransformInitializer->SetMovingImage( this->m_Registration->GetMovingImage() );
 		this->m_TransformInitializer->SetTransform( this->m_Transform );
+		this->m_TransformInitializer->GeometryOn();
 		this->m_TransformInitializer->InitializeTransform();
 		this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
-			
-		double	*displacementData = new double[3];
+		
+		double	*displacementData = new double[3];  // set the initial displacement
 		this->GetMeshPixelValueFromIndex( pointId, displacementData );
 		this->SetInitialDisplacement( displacementData );
 		
@@ -474,36 +452,35 @@ void ExecuteDIC()
 		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
 		this->WriteToLogfile( msg.str() );
 		
+		// if the optimizer is the lbfgsb then set the bounds based on teh current displacement
 		if( !strcmp(this->m_Registration->GetOptimizer()->GetNameOfClass(),"LBFGSBOptimizer") ){
-			itk::Array< long > boundSelect( this->m_Registration->GetTransform()->GetNumberOfParameters() );
-			itk::Array< double > upperBound( this->m_Registration->GetTransform()->GetNumberOfParameters() );
-			itk::Array< double > lowerBound( this->m_Registration->GetTransform()->GetNumberOfParameters() );
+			unsigned int nParameters = this->m_Registration->GetTransform()->GetNumberOfParameters();
+			itk::Array< long > boundSelect( nParameters );
+			itk::Array< double > upperBound( nParameters );
+			itk::Array< double > lowerBound( nParameters );
 			
 			boundSelect.Fill( 0 );
-			boundSelect[6] = 2;
-			boundSelect[7] = 2;
-			boundSelect[8] = 2;
-			upperBound.Fill( 0 );
+			boundSelect[nParameters-3] = 2;
+			boundSelect[nParameters-2] = 2;
+			boundSelect[nParameters-1] = 2;
 			typename FixedImageType::SpacingType imageSpacing = this->m_Registration->GetFixedImage()->GetSpacing();
-			upperBound[6] = *displacementData + 2*imageSpacing[0];
-			upperBound[7] = *(displacementData+1) + 2*imageSpacing[1];
-			upperBound[8] = *(displacementData+2) + 2*imageSpacing[2];
+			upperBound[nParameters-3] = *displacementData + .5*imageSpacing[0];
+			upperBound[nParameters-2] = *(displacementData+1) + .5*imageSpacing[1];
+			upperBound[nParameters-1] = *(displacementData+2) + .5*imageSpacing[2];
 			lowerBound.Fill( 0 );
-			lowerBound[6] = *displacementData - 2*imageSpacing[0];
-			lowerBound[7] = *(displacementData+1) - 2*imageSpacing[1];
-			lowerBound[8] = *(displacementData+2) - 2*imageSpacing[2];
+			lowerBound[nParameters-3] = *displacementData - .5*imageSpacing[0];
+			lowerBound[nParameters-2] = *(displacementData+1) - .5*imageSpacing[1];
+			lowerBound[nParameters-1] = *(displacementData+2) - .5*imageSpacing[2];
 			
 			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetBoundSelection( boundSelect );
 			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetUpperBound( upperBound );
 			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetLowerBound( lowerBound );
 		}
-			
-		//~ this->m_Metric->ReinitializeSeed();
-		std::cout<<"Number of Fixed Image Samples: "<<this->m_Metric->GetNumberOfPixelsCounted()<<std::endl;
-
-			
+		
+		// update the registration
 		this->UpdateRegionRegistration();
 		
+		// output the results
 		double *lastDisp = new double[3];
 		this->GetLastDisplacement( lastDisp );
 		this->SetMeshPixelValueFromIndex( pointId, lastDisp );
@@ -512,6 +489,7 @@ void ExecuteDIC()
 		this->SetMeshPixelOptimizerFromIndex( pointId, lastOpt );
 		msg.str("");
 		msg << "Final displacement value: ("<<*lastDisp<<", "<<*(lastDisp+1)<<", "<<*(lastDisp+2)<<")"<<std::endl <<
+			"Optimizer stop condition: " << this->m_Registration->GetOptimizer()->GetStopConditionDescription() << std::endl <<
 			"Final optimizer value: "<<*lastOpt<<std::endl<<std::endl;
 		this->WriteToLogfile( msg.str() );
 		std::string debugFile = this->m_OutputDirectory + "/debug.vtk";
@@ -519,11 +497,12 @@ void ExecuteDIC()
 	}
 }
 
-/** A function to write the mesh data to a VTK ASCII file. **/
+/** A function to write the mesh data to a VTK ASCII file. */
 void WriteMeshToVTKFile(std::string outFile)
 {
 	vtkSmartPointer<vtkUnstructuredGridWriter>	writer = vtkSmartPointer<vtkUnstructuredGridWriter>::New();
 	writer->SetFileName( outFile.c_str() );
+	writer->SetFileTypeToASCII();
 	writer->SetInput( this->m_DataImage );
 	writer->Update();
 }
@@ -533,112 +512,297 @@ void WriteMeshToVTKFile(std::string outFile)
 void KDTreeSetAndBuild()
 {
 	this->m_KDTree->SetDataSet( this->m_DataImage );
-	this->m_KDTree->BuildLocatorFromPoints(this->m_DataImage->GetPoints());
+	this->m_KDTree->BuildLocatorFromPoints( this->m_DataImage->GetPoints() );
 }
 
-/** A function to find the values that are not the same as the neighbours. */
+/** A function to find the values that are outside a given bounds 
+ * compared to their connected neighbours. */
 void CreateNewRegionListFromBadPixels()
 {	
 	this->m_FixedImageRegionList.clear(); // clear the regions for calculation
 	this->m_MovingImageRegionList.clear();
-	this->m_pointsList->Reset();
-	unsigned int numberOfPoints = this->m_DataImage->GetNumberOfPoints();
+	this->m_pointsList->Reset(); // clear the point list
+	
+	DataImagePointer tempImage = DataImagePointer::New(); // make a copy of the image to work with
+	tempImage->DeepCopy(this->m_DataImage);
+	
+	// visit every point in the image
+	unsigned int numberOfPoints = tempImage->GetNumberOfPoints();
 	for( unsigned int i = 0; i < numberOfPoints; ++i ){
-		// find points within radius
-		double *currentPoint = new double[3];
-		this->GetMeshPointLocationFromIndex( i, currentPoint );
-		vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New();
-		this->m_KDTree->FindPointsWithinRadius( this->m_errorRadius, currentPoint, pointList );
-		// calc the average and stDev of the points in the list
-		double *averageValue = new double[3];
-		double *averageMag = new double;
-		double *stDevValue = new double[3];
-		double *stDevMag = new double;
-		this->CalculateStats(i, pointList, averageValue, averageMag, stDevValue, stDevMag );
-		// get the value of the current point
-		double *currentValue = new double[3];
-		this->GetMeshPixelValueFromIndex( i, currentValue );
-		double *currentOptimizer = new double;
-		this->GetMeshPixelOptimizerFromIndex( i, currentOptimizer);
 		
+		// find connected points
+		vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New();
+		this->GetNeighbouringPoints( i, pointList );
+
+		// calc the average and standard deviabtions of the displacements stored in the neighbourhood points
+		double averageValue[3] = {0,0,0};
+		double averageMag = 0;
+		double stDevValue[3] = {0,0,0};
+		double stDevMag = 0;
+		this->GetDisplacementStats(i, pointList, averageValue, averageMag, stDevValue, stDevMag, tempImage );
+		
+		// get the displacement value stored in the current point
+		double *currentValue = new double[3];
+		currentValue = tempImage->GetPointData()->GetArray("Displacement")->GetTuple( i );
+	
 		// check if there the pixel is valid - if any component is out of value it is considered invalid
-		if( std::fabs(*currentValue - *averageValue) > this->m_errorTolerance*(*stDevValue) ||
-			std::fabs(*(currentValue+1) - *(averageValue+1)) > this->m_errorTolerance*(*(stDevValue+1)) ||
-			std::fabs(*(currentValue+2) - *(averageValue+2)) > this->m_errorTolerance*(*(stDevValue+2)) ||
-			*currentOptimizer > this->m_maxMeticValue ){
+		if( !DisplacementValid(currentValue, averageValue, averageMag, stDevValue, stDevMag ) ){
 			
-			MovingImageRegionType *currentMovingRegion = new MovingImageRegionType; // New Moving Region
-			double *currentPointLocation = this->m_DataImage->GetPoint( i );
-			
+			double *averagedDisplacement = new double[3];
+			averagedDisplacement = CalculateDisplacementWeightedMovingAverage( 2, 0, i, tempImage );
+			this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i, averagedDisplacement );  // apply a smoothed value to the mesh to be used in the next evaluation		
+				
 			double *movingImageCenterLocation = new double[3];
-			*movingImageCenterLocation = *currentPointLocation + *averageValue;
-			*(movingImageCenterLocation+1) = *(currentPointLocation+1) + *(averageValue+1);
-			*(movingImageCenterLocation+2) = *(currentPointLocation+2) + *(averageValue+2);
+			movingImageCenterLocation = this->GetMovingImageRegionLocationFromIndex( i ); // new moving image centre
+			
+			MovingImageRegionType *currentMovingRegion = new MovingImageRegionType;
 			this->GetMovingImageRegionFromLocation( currentMovingRegion, movingImageCenterLocation );
-			this->PushRegionOntoMovingImageRegionList( currentMovingRegion );
+			this->PushRegionOntoMovingImageRegionList( currentMovingRegion ); // new moving image
 			
-			FixedImageRegionType *currentFixedRegion = new FixedImageRegionType;  // New Fixed Region
-			this->GetFixedImageRegionFromLocation( currentFixedRegion, currentPointLocation );
+			FixedImageRegionType *currentFixedRegion = new FixedImageRegionType;  // calculated the new fixed region
+			this->GetFixedImageRegionFromLocation( currentFixedRegion, this->m_DataImage->GetPoint( i ) );
 			this->PushRegionOntoFixedImageRegionList( currentFixedRegion );
-			this->m_pointsList->InsertNextId( i );
 			
-			this->SetMeshPixelValueFromIndex( i, CalculateDisplacementWeightedMovingAverage(this->m_errorRadius, 2, 0, i, this->m_DataImage ));  // apply pixel value to the mesh
+			this->m_pointsList->InsertNextId( i ); // add the current point to the next round of evaluation
 		}
 	}
 }
 
 /** A function to calcluate the component and mangnitued averages of point
- * values from a list of point IDs. **/ 
-void CalculateStats(vtkIdType c_point, vtkSmartPointer<vtkIdList> points, double *vectorAverage, double *magAverage, double *vectorStDev, double *magStDev)
+ * values from a list of point IDs. 
+ * rPoint = reference point
+ * points = list of points for stats calculation
+ * vectorAverage = average value of each component (eg, vectorAverage[0] = average(x_displacement) 
+ * magAverage = average magnitude of vectorAverage
+ * vectorStDev = standard deviation of each component
+ * magStDev = magnitude of the standard deviations
+ * image = pointer to an unstructured grid image */ 
+void GetDisplacementStats(vtkIdType rPoint, vtkSmartPointer<vtkIdList> points, double vectorAverage[3], double &magAverage, double vectorStDev[3], double &magStDev, DataImagePointer image)
 {
+	// visit each point in the list and calculate the average
 	unsigned int nPoints = points->GetNumberOfIds();
-	*vectorAverage = 0;
-	*(vectorAverage+1) = 0;
-	*(vectorAverage+2) = 0;
-	*magAverage = 0;
-	*vectorStDev = 0;
-	*(vectorStDev+1) = 0;
-	*(vectorStDev+2) = 0;
-	*magStDev = 0;
+	int denominator = 0;
 	for( unsigned int i = 0; i < nPoints; ++i){
+		
 		vtkIdType pointId = points->GetId( i );
-		if ( pointId == c_point) continue; // don't include the current point in the average.
+		if ( pointId == rPoint) continue; // don't include the current point in the average.
+		denominator++; // increment the denominator only once passed the current point check
+		
 		double *cPoint = new double[3];
-		this->m_DataImage->GetPointData()->GetArray("Displacement")->GetTuple( pointId, cPoint );
+		image->GetPointData()->GetArray("Displacement")->GetTuple( pointId, cPoint ); // get the current point value
 		
-		*vectorAverage = *vectorAverage + *cPoint;
-		*(vectorAverage+1) = *(vectorAverage+1) + *(cPoint+1);
-		*(vectorAverage+2) = *(vectorAverage+2) + *(cPoint+2);
+		vectorAverage[0] = vectorAverage[0] + cPoint[0];
+		vectorAverage[1] = vectorAverage[1] + cPoint[1];
+		vectorAverage[2] = vectorAverage[2] + cPoint[2];
 		
-		*magAverage = *magAverage + std::sqrt( std::pow(*cPoint,2) + std::pow(*(cPoint+1),2) + std::pow(*(cPoint+2),2) );
+		magAverage = magAverage + std::sqrt( std::pow(cPoint[0],2) + std::pow(cPoint[1],2) + std::pow(cPoint[2],2) );
 	}
 	
-	*vectorAverage = *vectorAverage/nPoints;
-	*(vectorAverage+1) = *(vectorAverage+1)/nPoints;
-	*(vectorAverage+2) = *(vectorAverage+2)/nPoints;
-	
-	*magAverage = *magAverage/nPoints-1;
+	vectorAverage[0] = vectorAverage[0]/denominator;
+	vectorAverage[1] = vectorAverage[1]/denominator;
+	vectorAverage[2] = vectorAverage[2]/denominator; 
+	magAverage = magAverage/denominator;
 	
 	double vectDiff[3] = {0, 0, 0};
 	double magDiff = 0;
+	denominator = 0;
 	for( unsigned int i = 0; i <nPoints; ++i){
+		
 		vtkIdType pointId = points->GetId( i );
+		if ( pointId == rPoint) continue; // don't include the current point in the average.
+		denominator++; // increment the denominator only once passed the current point check
+		
 		double *cPoint = new double[3];
-		this->m_DataImage->GetPointData()->GetArray("Displacement")->GetTuple( pointId, cPoint );
-		double cMag = std::sqrt( std::pow(*cPoint,2) + std::pow(*(cPoint+1),2) + std::pow(*(cPoint+2),2) );
+		image->GetPointData()->GetArray("Displacement")->GetTuple( pointId, cPoint ); // get the current point value
 		
-		vectDiff[0] = vectDiff[0] + std::pow( (*cPoint-*vectorAverage), 2);
-		vectDiff[1] = vectDiff[1] + std::pow( (*(cPoint+1)-*(vectorAverage+1)) ,2);
-		vectDiff[2] = vectDiff[2] + std::pow( (*(cPoint+2)-*(vectorAverage+2)), 2);
+		double cMag = std::sqrt( std::pow(cPoint[0],2) + std::pow(cPoint[1],2) + std::pow(cPoint[2],2) );
 		
-		magDiff = magDiff + std::pow( (cMag - *magAverage), 2);
+		// the sum of all the squared distances from the mean
+		vectDiff[0] = vectDiff[0] + std::pow( (cPoint[0]-vectorAverage[0]), 2);
+		vectDiff[1] = vectDiff[1] + std::pow( (cPoint[1]-vectorAverage[1]), 2);
+		vectDiff[2] = vectDiff[2] + std::pow( (cPoint[2]-vectorAverage[2]), 2);
+		
+		magDiff = magDiff + std::pow( (cMag - magAverage), 2);
 	}
 	
-	*vectorStDev = std::sqrt(vectDiff[0]/nPoints);
-	*(vectorStDev+1) = std::sqrt(vectDiff[1]/nPoints);
-	*(vectorStDev+2) = std::sqrt(vectDiff[2]/nPoints);
+	vectorStDev[0] = std::sqrt(vectDiff[0]/denominator);
+	vectorStDev[1] = std::sqrt(vectDiff[1]/denominator);
+	vectorStDev[2] = std::sqrt(vectDiff[2]/denominator);
 	
-	*magStDev = std::sqrt(magDiff/nPoints);
+	magStDev = std::sqrt(magDiff/denominator);
+}
+
+void ReplaceBadDisplacementPixels( double sigma, double mean, vtkIdList *replacedList)
+{
+	// create a duplicate of the data image
+	DataImagePointer tempImage = DataImagePointer::New();
+	tempImage->DeepCopy(this->m_DataImage);
+	
+	// empty the list of replaced points
+	replacedList->Reset();
+	
+	// visit every point in the image
+	unsigned int numberOfPoints = tempImage->GetNumberOfPoints();
+	for( unsigned int i = 0; i < numberOfPoints; ++i ){
+
+		// get connected points
+		vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New();		
+		this->GetNeighbouringPoints( i, pointList );
+
+		// calc the average and stDev of the points in the list
+		double vectorAverage[3] = { 0 };
+		double magAverage = 0;
+		double vectorStDev[3] = { 0 };
+		double magStDev = 0;		
+		this->GetDisplacementStats( i, pointList, vectorAverage, magAverage, vectorStDev, magStDev, tempImage );
+			
+		// get the value of the current point
+		double *currentValue = new double[3];
+		tempImage->GetPointData()->GetArray("Displacement")->GetTuple( i, currentValue );
+		
+		// check if there the pixel is valid - if any component is out of value it is considered invalid
+		if( !this->DisplacementValid( currentValue, vectorAverage, magAverage, vectorStDev, magStDev ) ){	
+			double *newDisplacement = new double[3];
+			newDisplacement = CalculateDisplacementWeightedMovingAverage( sigma, mean, i, tempImage );
+			this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i, newDisplacement );  // apply pixel value to the mesh
+			replacedList->InsertNextId( i );
+		}
+	}
+}
+
+bool DisplacementValid(double value[3], double vectorAverage[3], double &magAverage, double vectorStDev[3], double &magStDev)
+{
+		if (
+		std::fabs(value[0] - vectorAverage[0]) > this->m_displacementErrorTolerance * vectorStDev[0] ||
+		std::fabs(value[1] - vectorAverage[1]) > this->m_displacementErrorTolerance * vectorStDev[1] ||
+		std::fabs(value[2] - vectorAverage[2]) > this->m_displacementErrorTolerance * vectorStDev[2] )
+		{
+			return false;
+		}
+		else
+		{
+			return true;
+		}
+	
+}
+
+void ReplaceBadStrainPixels( double sigma, double mean, vtkIdList *replacedList)
+{
+	// create a duplicate of the data image
+	DataImagePointer tempImage = DataImagePointer::New();
+	tempImage->DeepCopy(this->m_DataImage);
+	
+	// empty the list of replaced points
+	replacedList->Reset(); 
+	
+	// visit every point in the image
+	unsigned int numberOfPoints = tempImage->GetNumberOfPoints();
+	for( unsigned int i = 0; i < numberOfPoints; ++i ){
+
+		// get connected points
+		vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New();		
+		this->GetNeighbouringPoints( i, pointList );
+
+		// calc the average and stDev of the points in the list
+		double averageValue[9] = { 0 };
+		double stDevValue[9] = { 0 };
+		this->GetStrainStats(i, pointList, averageValue, stDevValue );
+		
+		// get the value of the current point
+		double *currentValue = new double[9];
+		currentValue = tempImage->GetPointData()->GetArray("Strain")->GetTuple( i );
+		
+		// check if there the pixel is valid - if any component is out of value it is considered invalid
+		if( !this->StrainValid(currentValue, averageValue, stDevValue) ){	
+			double *newStrain = new double[9];
+			newStrain = CalculateStrainWeightedMovingAverage( sigma, mean, i, tempImage );
+			this->m_DataImage->GetPointData()->GetArray("Strain")->SetTuple( i, newStrain );  // apply pixel value to the mesh
+			replacedList->InsertNextId( i );
+		}
+	}
+}
+
+void GetStrainStats( vtkIdType c_point, vtkSmartPointer<vtkIdList> points, double vectorAverage[9], double vectorStDev[9] )
+{
+	unsigned int nPoints = points->GetNumberOfIds();
+	int denominator = 0;
+	for( unsigned int i = 0; i < nPoints; ++i){
+		vtkIdType pointId = points->GetId( i );
+		if ( pointId == c_point) continue; // don't include the current point in the average.
+		denominator++;
+		double *cPoint = new double[9];
+		this->m_DataImage->GetPointData()->GetArray("Strain")->GetTuple( pointId, cPoint );
+		
+		vectorAverage[0] = vectorAverage[0] + cPoint[0];
+		vectorAverage[1] = vectorAverage[1] + cPoint[1];
+		vectorAverage[2] = vectorAverage[2] + cPoint[2];
+		vectorAverage[3] = vectorAverage[3] + cPoint[3];
+		vectorAverage[4] = vectorAverage[4] + cPoint[4];
+		vectorAverage[5] = vectorAverage[5] + cPoint[5];
+		vectorAverage[6] = vectorAverage[6] + cPoint[6];
+		vectorAverage[7] = vectorAverage[7] + cPoint[7];
+		vectorAverage[8] = vectorAverage[8] + cPoint[8];
+	}
+	
+	vectorAverage[0] = vectorAverage[0]/denominator;
+	vectorAverage[1] = vectorAverage[1]/denominator;
+	vectorAverage[2] = vectorAverage[2]/denominator;
+	vectorAverage[3] = vectorAverage[3]/denominator;
+	vectorAverage[4] = vectorAverage[4]/denominator;
+	vectorAverage[5] = vectorAverage[5]/denominator;
+	vectorAverage[6] = vectorAverage[6]/denominator;
+	vectorAverage[7] = vectorAverage[7]/denominator;
+	vectorAverage[8] = vectorAverage[8]/denominator;
+	
+	double vectDiff[9] = { 0 };
+	denominator = 0;
+	for( unsigned int i = 0; i <nPoints; ++i){
+		vtkIdType pointId = points->GetId( i );
+		if ( pointId == c_point) continue; // don't include the current point in the average.
+		denominator++;
+		double *cPoint = new double[9];
+		this->m_DataImage->GetPointData()->GetArray("Strain")->GetTuple( pointId, cPoint );
+		
+		vectDiff[0] = vectDiff[0] + std::pow( (cPoint[0] - vectorAverage[0]), 2);
+		vectDiff[1] = vectDiff[1] + std::pow( (cPoint[1] - vectorAverage[1]), 2);
+		vectDiff[2] = vectDiff[2] + std::pow( (cPoint[2] - vectorAverage[2]), 2);
+		vectDiff[3] = vectDiff[3] + std::pow( (cPoint[3] - vectorAverage[3]), 2);
+		vectDiff[4] = vectDiff[4] + std::pow( (cPoint[4] - vectorAverage[4]), 2);
+		vectDiff[5] = vectDiff[5] + std::pow( (cPoint[5] - vectorAverage[5]), 2);
+		vectDiff[6] = vectDiff[6] + std::pow( (cPoint[6] - vectorAverage[6]), 2);
+		vectDiff[7] = vectDiff[7] + std::pow( (cPoint[7] - vectorAverage[7]), 2);
+		vectDiff[8] = vectDiff[8] + std::pow( (cPoint[8] - vectorAverage[8]), 2);
+	}
+	
+	vectorStDev[0] = std::sqrt( vectDiff[0]/denominator );
+	vectorStDev[1] = std::sqrt( vectDiff[1]/denominator );
+	vectorStDev[2] = std::sqrt( vectDiff[2]/denominator );
+	vectorStDev[3] = std::sqrt( vectDiff[3]/denominator );
+	vectorStDev[4] = std::sqrt( vectDiff[4]/denominator );
+	vectorStDev[5] = std::sqrt( vectDiff[5]/denominator );
+	vectorStDev[6] = std::sqrt( vectDiff[6]/denominator );
+	vectorStDev[7] = std::sqrt( vectDiff[7]/denominator );
+	vectorStDev[8] = std::sqrt( vectDiff[8]/denominator );
+}
+
+bool StrainValid(double currentValue[9], double averageValue[9], double stDevValue[9])
+{
+	if (std::fabs(currentValue[0] - averageValue[0]) > this->m_strainErrorTolerance * stDevValue[0] ||
+		std::fabs(currentValue[1] - averageValue[1]) > this->m_strainErrorTolerance * stDevValue[1] ||
+		std::fabs(currentValue[2] - averageValue[2]) > this->m_strainErrorTolerance * stDevValue[2] ||
+		std::fabs(currentValue[3] - averageValue[3]) > this->m_strainErrorTolerance * stDevValue[3] ||
+		std::fabs(currentValue[4] - averageValue[4]) > this->m_strainErrorTolerance * stDevValue[4] ||
+		std::fabs(currentValue[5] - averageValue[5]) > this->m_strainErrorTolerance * stDevValue[5] ||
+		std::fabs(currentValue[6] - averageValue[6]) > this->m_strainErrorTolerance * stDevValue[6] ||
+		std::fabs(currentValue[7] - averageValue[7]) > this->m_strainErrorTolerance * stDevValue[7] ||
+		std::fabs(currentValue[8] - averageValue[8]) > this->m_strainErrorTolerance * stDevValue[8] )
+		{
+			return false;
+		}
+		else
+		{
+			return true;
+		}
 }
 
 /** A function to calculate the strains. */
@@ -650,15 +814,15 @@ void GetStrains()
 	derivativeCalculator->SetTensorModeToComputeStrain();
 	derivativeCalculator->SetVectorModeToComputeGradient();
 	
-	derivativeCalculator->SetInputArrayToProcess(1,0,0,0,"Displacement");
+	derivativeCalculator->SetInputArrayToProcess(1,0,0,0,"Displacement"); // the CellDerivatives calculator sets the array idx to 0 for scalars and 1 for vector inputs. We want it to operate on vectors, so idx is set to 1.  Further, giving it the name of the array allows it to verify that it is operating on the correct array.
 	derivativeCalculator->Update();
 	this->SetDataImage( derivativeCalculator->GetUnstructuredGridOutput() );
-		
+	
 	// move the data from cells to nodes
 	vtkCellDataToPointData	*dataTransformer = vtkCellDataToPointData::New();
 	dataTransformer->SetInput( this->m_DataImage );
 	dataTransformer->PassCellDataOn();
-	dataTransformer->SetInputArrayToProcess(0,0,1,1,"Strain");
+	dataTransformer->SetInputArrayToProcess(0,0,0,1,"Strain");// Strain is on array zero of the cells in m_DataImage. The 4th is an enum to tell the algorithm the data is stored in cells, the last in the name of the array.
 	dataTransformer->Update();
 	
 	this->SetDataImage( dataTransformer->GetUnstructuredGridOutput() );
@@ -909,11 +1073,14 @@ void GetPrincipalStrains()
 
 /** A function to smooth the mesh image.  This method takes the N closest 
  * points (includeing the point in question) and takes the point with the
- * median magnitude as the value. N must be odd or 1 will be added to it. */
+ * median magnitude as the value. N must be odd or 1 will be added to it.
+ * NOTE: This filter has been replaced by "ReplaceBadDisplacementPixels"
+ * and "ReplaceBadStrainPixels." It has not been updated or debugged - 
+ * USE AT YOUR OWN RISK (or update and debug). */
 void MedianImageFilter(unsigned int N)
 {
 	// if N is even, add one
-	N % 2 == 1 ? : N += 1;
+	N = (N % 2 == 1) ? N += 1 : N;
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
@@ -922,8 +1089,9 @@ void MedianImageFilter(unsigned int N)
 	for( unsigned int i = 0; i < nPoints; ++i ){
 		double *cPoint = tempImage->GetPoint( i );
 		// find the 7 closest points to the position of each point
-		vtkIdList *pointList = vtkIdList::New();
-		this->m_KDTree->FindClosestNPoints( N, cPoint, pointList );
+		vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New();
+		//~ this->m_KDTree->FindClosestNPoints( N, cPoint, pointList );
+		this->GetNeighbouringPoints( i, pointList );
 		// calculate magnitudes
 		double neighbourhoodMagnitudes[N];
 		std::vector<double> sortingArray; // array for magnitude sorting
@@ -953,51 +1121,72 @@ void MedianImageFilter(unsigned int N)
  * of the Gaussian kernel; and mean, the mean of the Gaussian kernel in
  * terms of distance from the point being averaged (this will in 99.99%
  * of cases need to be set to 0).*/
-void DisplacementWeightedMovingAverageFilter( double R , double sigma, double mean )
+void DisplacementWeightedMovingAverageFilter( double sigma, double mean )
 {
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
-	// loop through the points of both the images
+	
+	// visit each point of the temp image, replace values in m_DataImage
 	unsigned int nPoints = tempImage->GetNumberOfPoints();
-	R = R == 0 ? 3*sigma : R;
 	for( unsigned int i = 0; i < nPoints; ++i ){
+		
 		double *newPixel = new double[3];
-		newPixel = CalculateDisplacementWeightedMovingAverage( R, sigma, mean, i, tempImage );
+		newPixel = CalculateDisplacementWeightedMovingAverage( sigma, mean, i, tempImage );
+		
 		// set the data image pixel to the value of the new pixel
 		this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i, newPixel );
 	}
 }
 
-double* CalculateDisplacementWeightedMovingAverage( double R, double sigma, double mean, unsigned int pointId, DataImagePointer image )
+/** A function to calculate the weighted average of the displacement 
+ * stored in a pixel. This fucntion takes the standard deviation, sigma,
+ * and the mean distance, mean, of the gaussian kernel that will be used
+ * to caluculated the weights for the weighting function. It also take 
+ * the mesh point ID, pointId and a pointer to the data image that 
+ * should be used to caluclate the average. The point with ID pointID is
+ * included in the calculation of the average. */ 
+double* CalculateDisplacementWeightedMovingAverage( double sigma, double mean, unsigned int pointId, DataImagePointer image )
 {
-	// find the points withing the specified radius of the current point position		
-	double *cPoint = image->GetPoint( pointId ); // current point position
-	vtkIdList *pointList = vtkIdList::New(); // id list to hold ids of the closest points
-	this->m_KDTree->FindPointsWithinRadius( R, cPoint, pointList );
-	// move through the points in the list and use them to calculate the new point value
-	unsigned int N = pointList->GetNumberOfIds();
-	double totalNumerator[3] = { 0, 0, 0 };
+	if (sigma == 0) {
+		return image->GetPointData()->GetArray("Displacement")->GetTuple( pointId );
+	}
+	
+	vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New(); 
+	this->GetNeighbouringPoints( pointId, pointList); // get connected points
+	
+	// Initialize variables for the loop
+	double totalNumerator[3] = { 0 };
 	double totalDenominator = 0;
-	for( unsigned int j = 0; j < N; ++j){
-		vtkIdType cId = pointList->GetId( j );
-		// calcualate the weight based on the distance and the gaussian parameters
-		double *tempLocation = image->GetPoint( cId );
-		double cDistance = sqrt( pow((*tempLocation-*cPoint),2) + pow((*(tempLocation+1)-(*cPoint+1)),2) + pow((*(tempLocation+2)-(*cPoint+2)),2) );
-		double weight = 1/(2.50662827*sqrt(sigma))*pow(2.718281828,-pow((cDistance-mean),2)/(2*sigma*sigma)); // 1/sqrt(2*pi*sigma)*e^(-(X-mean)^2/(s*sigma^2)) (the Gaussian distribution)
+	
+	double *rPoint = new double[3];
+	image->GetPoint( pointId, rPoint ); // reference point location	
+	
+	// visit each points in the list and use them to calculate the new point value
+	for( unsigned int j = 0; j <= pointList->GetNumberOfIds(); ++j){
+		vtkIdType cId = j == pointList->GetNumberOfIds() ? pointId : pointList->GetId( j ); // include the reference point at the very end
+			
+		double *cPoint = new double[3];
+		image->GetPoint( cId, cPoint ); // current point location
+
+		double distance = sqrt( pow(rPoint[0]-cPoint[0],2) + pow(rPoint[1]-cPoint[1],2) + pow(rPoint[2]-cPoint[2],2) );
+		double weight = 1/(2.50662827*sigma)*pow(2.718281828,-pow((distance-mean),2)/(2*sigma*sigma)); // 1/(sqrt(2*pi)*sigma)*e^(-(X-mean)^2/(2*sigma^2)) (the Gaussian distribution)
+		
 		// add the weight to the total denominator
 		totalDenominator = totalDenominator + weight;
+		
 		// add to the numerators
-		double *tempPixel = image->GetPointData()->GetArray("Displacement")->GetTuple( cId ); // the original data in the current point
-		totalNumerator[0] = totalNumerator[0] + weight * *tempPixel;
-		totalNumerator[1] = totalNumerator[1] + weight * *(tempPixel+1);
-		totalNumerator[2] = totalNumerator[2] + weight * *(tempPixel+2);
+		double *tempPixel = new double[3];
+		image->GetPointData()->GetArray("Displacement")->GetTuple( cId, tempPixel ); // the original data in the current point
+		totalNumerator[0] = totalNumerator[0] + weight * tempPixel[0];
+		totalNumerator[1] = totalNumerator[1] + weight * tempPixel[1];
+		totalNumerator[2] = totalNumerator[2] + weight * tempPixel[2];
 	}
 	// use the total numerators and denominator to calculate the new pixel
 	double *newPixel = new double[3];
-	*newPixel = totalNumerator[0] / totalDenominator;
-	*(newPixel+1) = totalNumerator[1] / totalDenominator;
-	*(newPixel+2) = totalNumerator[2] / totalDenominator;
+	newPixel[0] = totalNumerator[0] / totalDenominator;
+	newPixel[1] = totalNumerator[1] / totalDenominator;
+	newPixel[2] = totalNumerator[2] / totalDenominator;
 	
 	return newPixel;
 }
@@ -1009,93 +1198,122 @@ double* CalculateDisplacementWeightedMovingAverage( double R, double sigma, doub
  * terms of distance from the point being averaged (this will in 99.99%
  * of cases need to be set to 0). Given a raduis of 0, the default value
  * of 3*sigma will be used*/
-void StrainWeightedMovingAverageFilter( double R , double sigma, double mean )
+void StrainWeightedMovingAverageFilter( double sigma, double mean )
 {
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
+	
 	// loop through the points of both the images
 	unsigned int nPoints = tempImage->GetNumberOfPoints();
-	R = R == 0 ? 3*sigma : R;
 	for( unsigned int i = 0; i < nPoints; ++i ){
+		
 		double *newPixel = new double[9];
-		newPixel = CalculateStrainWeightedMovingAverage( R, sigma, mean, i, tempImage );
+		newPixel = CalculateStrainWeightedMovingAverage( sigma, mean, i, tempImage );
+		
 		// set the data image pixel to the value of the new pixel
 		this->m_DataImage->GetPointData()->GetArray("Strain")->SetTuple( i, newPixel );
 	}
 }
 
-double * CalculateStrainWeightedMovingAverage( double R, double sigma, double mean, unsigned int pointId, DataImagePointer image )
+/** A function to calculate the weighted average of the strain 
+ * stored in a pixel. This fucntion takes the standard deviation, sigma,
+ * and the mean distance, mean, of the gaussian kernel that will be used
+ * to caluculated the weights for the weighting function. It also take 
+ * the mesh point ID, pointId and a pointer to the data image that 
+ * should be used to caluclate the average. The point with ID pointID is
+ * included in the calculation of the average. */
+double* CalculateStrainWeightedMovingAverage( double sigma, double mean, unsigned int pointId, DataImagePointer image )
 {
-	// find the points withing the specified radius of the current point position		
-	double *cPoint = image->GetPoint( pointId ); // current point position
-	vtkIdList *pointList = vtkIdList::New(); // id list to hold ids of the closest points
-	this->m_KDTree->FindPointsWithinRadius( R, cPoint, pointList );
-	// move through the points in the list and use them to calculate the new point value
-	unsigned int N = pointList->GetNumberOfIds();
-	double totalNumerator[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	if ( sigma == 0){
+		return image->GetPointData()->GetArray("Stain")->GetTuple( pointId );
+	}
+	
+	// get connected points
+	vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New(); // id list to hold ids of the closest points
+	this->GetNeighbouringPoints( pointId, pointList );
+	
+	// Initialize vaiables for the loop
+	double totalNumerator[9] = { 0 };
 	double totalDenominator = 0;
-	for( unsigned int j = 0; j < N; ++j){
-		//~ std::cout<<"R = "<<R<<" and N = "<<N<<std::endl;
-		vtkIdType cId = pointList->GetId( j );
-		// calcualate the weight based on the distance and the gaussian parameters
-		double *tempLocation = image->GetPoint( cId );
-		double cDistance = sqrt( pow((*tempLocation-*cPoint),2) + pow((*(tempLocation+1)-(*cPoint+1)),2) + pow((*(tempLocation+2)-(*cPoint+2)),2) );
-		double weight = 1/(2.50662827*sqrt(sigma))*pow(2.718281828,-pow((cDistance-mean),2)/(2*sigma*sigma)); // 1/sqrt(2*pi*sigma)*e^(-(X-mean)^2/(s*sigma^2)) (the Gaussian distribution)
-		// add the weight to the total denominator
-		totalDenominator = totalDenominator + weight;
+	
+	double *rPoint = new double[3]; // get reference point location
+	image->GetPoint(pointId, rPoint );
+	
+	// visit each connected point in the list and use them to calculate the new point value
+	for( unsigned int j = 0; j <= pointList->GetNumberOfIds(); ++j){
+		vtkIdType cId = j == pointList->GetNumberOfIds() ? pointId : pointList->GetId( j ); // include the reference point at the very end
+
+		double *cPoint = new double[3]; // get current point location
+		image->GetPoint( cId, cPoint );
+		
+		double distance = sqrt( pow(*cPoint-*rPoint,2) + pow(*(cPoint+1)-*(rPoint+1),2) + pow(*(cPoint+2)-*(rPoint+2),2) );  //vector distance between the two
+		double weight = 1/(2.50662827*sigma)*pow(2.718281828,-pow((distance-mean),2)/(2*sigma*sigma)); // 1/(sigma*sqrt(2*pi))*e^(-(X-mean)^2/(2*sigma^2)) (the Gaussian distribution)
+
+		totalDenominator = totalDenominator + weight; // add the weight to the total denominator
+		
 		// add to the numerators
 		double *tempPixel = image->GetPointData()->GetArray("Strain")->GetTuple( cId ); // the original data in the current point
-		totalNumerator[0] = totalNumerator[0] + weight * *tempPixel;
-		totalNumerator[1] = totalNumerator[1] + weight * *(tempPixel+1);
-		totalNumerator[2] = totalNumerator[2] + weight * *(tempPixel+2);
-		totalNumerator[3] = totalNumerator[3] + weight * *(tempPixel+3);
-		totalNumerator[4] = totalNumerator[4] + weight * *(tempPixel+4);
-		totalNumerator[5] = totalNumerator[5] + weight * *(tempPixel+5);
-		totalNumerator[6] = totalNumerator[6] + weight * *(tempPixel+6);
-		totalNumerator[7] = totalNumerator[7] + weight * *(tempPixel+7);
-		totalNumerator[8] = totalNumerator[8] + weight * *(tempPixel+8);
+		totalNumerator[0] = totalNumerator[0] + weight * tempPixel[0];
+		totalNumerator[1] = totalNumerator[1] + weight * tempPixel[1];
+		totalNumerator[2] = totalNumerator[2] + weight * tempPixel[2];
+		totalNumerator[3] = totalNumerator[3] + weight * tempPixel[3];
+		totalNumerator[4] = totalNumerator[4] + weight * tempPixel[4];
+		totalNumerator[5] = totalNumerator[5] + weight * tempPixel[5];
+		totalNumerator[6] = totalNumerator[6] + weight * tempPixel[6];
+		totalNumerator[7] = totalNumerator[7] + weight * tempPixel[7];
+		totalNumerator[8] = totalNumerator[8] + weight * tempPixel[8];
 	}
+	
 	// use the total numerators and denominator to calculate the new pixel
 	double *newPixel = new double[9];
-	*newPixel = totalNumerator[0] / totalDenominator;
-	*(newPixel+1) = totalNumerator[1] / totalDenominator;
-	*(newPixel+2) = totalNumerator[2] / totalDenominator;
-	*(newPixel+3) = totalNumerator[3] / totalDenominator;
-	*(newPixel+4) = totalNumerator[4] / totalDenominator;
-	*(newPixel+5) = totalNumerator[5] / totalDenominator;
-	*(newPixel+6) = totalNumerator[6] / totalDenominator;
-	*(newPixel+7) = totalNumerator[7] / totalDenominator;
-	*(newPixel+8) = totalNumerator[8] / totalDenominator;
+	newPixel[0] = totalNumerator[0] / totalDenominator;
+	newPixel[1] = totalNumerator[1] / totalDenominator;
+	newPixel[2] = totalNumerator[2] / totalDenominator;
+	newPixel[3] = totalNumerator[3] / totalDenominator;
+	newPixel[4] = totalNumerator[4] / totalDenominator;
+	newPixel[5] = totalNumerator[5] / totalDenominator;
+	newPixel[6] = totalNumerator[6] / totalDenominator;
+	newPixel[7] = totalNumerator[7] / totalDenominator;
+	newPixel[8] = totalNumerator[8] / totalDenominator;
 	
 	return newPixel;
 }
 
-/** This function will use the image registration method from DIC to 
- * align the images in the region bounded by m_DataImage's bounding box.*/
+/** This function will use the image registration method inherited from 
+ * DIC to align the images in the region bounded by m_DataImage's 
+ * bounding box. It will use the ITK shrink image filter to apply a 
+ * gaussian filter and downsample the images. This will increase the 
+ * radius of convergence and speed up the registration. The value used
+ * to downsample the images is stored in m_GlobalRegDownsampleValue*/
 void GlobalRegistration()
 {
 	// Use an ShrinkImageFilter to blur and downsample fixed and moving images to improve radius of convergance
 	typedef itk::ShrinkImageFilter< FixedImageType, FixedImageType > FixedResamplerType;
-	typedef itk::ShrinkImageFilter< MovingImageType, MovingImageType > MovingResamplerType;
-	
 	typename FixedResamplerType::Pointer	fixedResampler = FixedResamplerType::New();
-	typename MovingResamplerType::Pointer	movingResampler = MovingResamplerType::New();		
+	typedef itk::ShrinkImageFilter< MovingImageType, MovingImageType > MovingResamplerType;
+	typename MovingResamplerType::Pointer	movingResampler = MovingResamplerType::New();
+		
 	fixedResampler->SetInput( this->m_FixedImage );
 	movingResampler->SetInput( this->m_MovingImage );
+	
 	fixedResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
 	movingResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
+	
 	fixedResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
 	movingResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
-	std::stringstream msg("");
+	
+	std::stringstream msg(""); // note the current action in the logfile
 	msg <<"Resampling for global registration"<<std::endl<<std::endl;
-	this->WriteToLogfile(msg.str());
+	this->WriteToLogfile( msg.str() );
+	
 	fixedResampler->Update();
 	movingResampler->Update();
 	
 	// global registration - rotation is centred on the body
 	this->m_Registration->SetFixedImage( fixedResampler->GetOutput() );
 	this->m_Registration->SetMovingImage( movingResampler->GetOutput() );
+	this->SetTransformToIdentity();
 	this->m_TransformInitializer->SetFixedImage( fixedResampler->GetOutput() );
 	this->m_TransformInitializer->SetMovingImage( movingResampler->GetOutput() );
 	this->m_TransformInitializer->SetTransform( this->m_Transform );
@@ -1119,35 +1337,35 @@ void GlobalRegistration()
 	fixedResampler->GetOutput()->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart); // convert min point to start index
 	
 	typename FixedImageType::SpacingType fixedSpacing = fixedResampler->GetOutput()->GetSpacing(); // convert dimensinos to size in pixels
+	
 	typename FixedImageType::SizeType fixedImageROILengths;
 	fixedImageROILengths[0] = (int)std::floor(meshSize[0]/fixedSpacing[0]);
 	fixedImageROILengths[1] = (int)std::floor(meshSize[1]/fixedSpacing[1]);
 	fixedImageROILengths[2] = (int)std::floor(meshSize[2]/fixedSpacing[2]);
+	
 	typename FixedImageType::RegionType fixedAnalysisRegion;
 	fixedAnalysisRegion.SetIndex( fixedImageROIStart );
 	fixedAnalysisRegion.SetSize( fixedImageROILengths );
-	this->m_Registration->SetFixedImageRegion( fixedAnalysisRegion ); // set the limited analysis region
 	
+	this->m_Registration->SetFixedImageRegion( fixedAnalysisRegion ); // set the limited analysis region
 	this->m_Registration->SetFixedImageRegionDefined( true );
+	
 	msg.str("");
 	msg << "Global registration in progress"<<std::endl<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	this->m_Registration->Update();
-	this->m_Registration->SetFixedImageRegionDefined( false );
+	this->m_Registration->SetFixedImageRegionDefined( false ); // limited analysis regions will not be used in the DVC, so set to false immediately after global registration.
 	
 	msg.str("");
 	msg << "Global Registration complete."<<std::endl;
 	this->WriteToLogfile( msg.str() );
-	
-	
-	double globalRegResults[3];// = new double[3];
+
 	RegistrationParametersType	finalParameters = this->m_Registration->GetLastTransformParameters();
 	msg.str("");
 	msg << "Final Params:"<< finalParameters<<std::endl;
 	this->WriteToLogfile( msg.str() );
-	globalRegResults[0] = finalParameters[6];
-	globalRegResults[1] = finalParameters[7];
-	globalRegResults[2] = finalParameters[8];	
+	double globalRegResults[3] = { 0 };	
+	this->GetLastDisplacement( globalRegResults );
 	
 	msg.str("");
 	msg << "Global registration finished.\n Resulting displacement: ("<<globalRegResults[0]<<
@@ -1157,8 +1375,8 @@ void GlobalRegistration()
 	this->SetMeshInitialValue( globalRegResults );
 }
 
-/** A function to set the downsample value used by the global registration.
- * The default value is 3. */
+/** A function to set the downsample value used by the global
+ * registration. The default value is 3. */
 void SetGlobalRegistrationDownsampleValue( unsigned int value )
 {
 	if (m_GlobalRegDownsampleValue != value){
@@ -1166,19 +1384,60 @@ void SetGlobalRegistrationDownsampleValue( unsigned int value )
 	}
 }
 
-/** A function to set the error tolerance in units of standard deviations 
- * from the average of the pixels in the error radius. */
-void SetErrorTolerance(double tolerance)
+/** A function to get the downsample value used by the global
+ * registraion. */
+unsigned int GetGlobalRegistrationDownsampleValue()
 {
-	this->m_errorTolerance = tolerance;
+	return this->m_GlobalRegDownsampleValue;
 }
 
-/** A fucntion to set the error in image dimensions (eg. mm, inches). */
+/** A function to set the error tolerance in units of standard 
+ * deviations from the average of the connected pixels. If a pixel is 
+ * found to be farther from the mean than the value set, it will be
+ * replaced by the ReplaceBadDisplacementPixels method. */
+void SetDisplacementErrorTolerance(double tolerance)
+{
+	this->m_displacementErrorToleranceErrorTolerance = tolerance;
+}
+
+/** A function to get the error tolerance in units of standard 
+ * deviations from the average of the connected pixels. If a pixel is 
+ * found to be farther from the mean than the value set, it will be
+ * replaced by the ReplaceBadDisplacementPixels method. */
+double GetDisplacementErrorTollerance()
+{
+	return this->m_displacementErrorTolerance;
+}
+
+/** A function to set the error tolerance in units of standard 
+ * deviations from the average of the connected pixels. If a pixel is 
+ * found to be farther from the mean than the value set, it will be
+ * replaced by the ReplaceBadStrainPixels method. */
+void SetStrainErrorTolerance(double tolerance)
+{
+	this->m_strainErrorToleranceErrorTolerance = tolerance;
+}
+
+/** A function to get the error tolerance in units of standard 
+ * deviations from the average of the connected pixels. If a pixel is 
+ * found to be farther from the mean than the value set, it will be
+ * replaced by the ReplaceBadStraintPixels method. */
+double GetStrainErrorTolerance()
+{
+	return this->m_strainErrorTolerance;
+}
+
+/** A fucntion to set the error in image dimensions (eg. mm, inches). 
+ * NOTE: Depriciated. This function may be removed at any time. Use at 
+ * your OWN RISK.*/
 void SetErrorRadius(double radius)
 {
 	this->m_errorRadius = radius;
 }
 
+/** A function to set the max metric value acceptable in registration.
+ * NOTE: Depreciated. This function bay be removed at any time. Use at
+ * your OWN RISK. */
 void SetMaxMetricValue( double maxVal )
 {
 	if (m_maxMeticValue != maxVal){
@@ -1186,9 +1445,43 @@ void SetMaxMetricValue( double maxVal )
 	}
 }
 
+/** A function to get the max metric value acceptable in registration.
+ * NOTE: Depreciated. This function bay be removed at any time. Use at
+ * your OWN RISK. */
 double GetMaxMetricValue()
 {
 	return m_maxMeticValue;
+}
+
+/** A function that will return the points connected to the current
+ * point, vtkIdType id, and returns them in vtkIdList idList. idList
+ * is reset to empty by this method before being filled.*/
+void GetNeighbouringPoints( vtkIdType id, vtkSmartPointer<vtkIdList> idList )
+{
+	idList->Reset(); // reset the ID list to avoid mistakes
+	
+	// Get the cell IDs that 'id' is part of
+	vtkSmartPointer<vtkIdList> cCellList = vtkSmartPointer<vtkIdList>::New();
+	this->m_DataImage->GetPointCells( id, cCellList );
+	
+	// visit each cell
+	for( unsigned int i = 0; i < cCellList->GetNumberOfIds(); ++i ){
+		
+		// visit each line in each cell
+		for ( int j = 0; j < this->m_DataImage->GetCell( cCellList->GetId( i ) )->GetNumberOfEdges(); ++j){
+			
+			// if 'id' is the first in the line, save the second id as a unique id
+			if( this->m_DataImage->GetCell(cCellList->GetId(i))->GetEdge(j)->GetPointId(0) == id ){
+				idList->InsertUniqueId( this->m_DataImage->GetCell(cCellList->GetId(i))->GetEdge(j)->GetPointId(1) );
+				continue;
+			}
+			// if 'id' is the second in the line, save the first id as a unique id
+			if( this->m_DataImage->GetCell(cCellList->GetId(i))->GetEdge(j)->GetPointId(1) == id ){
+				idList->InsertUniqueId( this->m_DataImage->GetCell(cCellList->GetId(i))->GetEdge(j)->GetPointId(0) );
+				continue;
+			}
+		}
+	}
 }
 
 private:
@@ -1196,7 +1489,8 @@ private:
 DataImagePointer			m_DataImage;
 vtkSmartPointer<vtkPKdTree>	m_KDTree;
 double						m_errorRadius;
-double						m_errorTolerance;
+double						m_displacementErrorTolerance;
+double						m_strainErrorTolerance;
 double						m_maxMeticValue; // this because I'm using the normalized x-correlation coefficient metric
 vtkSmartPointer<vtkIdList>	m_pointsList;
 RegistrationParametersType	m_GlobalRegistrationParameters;

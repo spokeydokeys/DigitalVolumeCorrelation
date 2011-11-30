@@ -42,6 +42,7 @@
 #include <itkMattesMutualInformationImageToImageMetric.h>
 #include "itkLBFGSBOptimizer.h"
 #include <itkMeanSquaresImageToImageMetric.h>
+#include <itkCenteredAffineTransform.h>
 
 template <typename TFixedImage, typename TMovingImage>
 class DIC
@@ -94,17 +95,13 @@ typedef typename	MovingImageReaderType::Pointer								MovingImageReaderPointer;
 typedef	itk::ImageRegistrationMethod< FixedImageType, MovingImageType>			ImageRegistrationMethodType;
 typedef	typename	ImageRegistrationMethodType::Pointer						ImageRegistrationMethodPointer;
 
-//~ typedef itk::NormalizedCorrelationImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
-//~ typedef itk::MattesMutualInformationImageToImageMetric< FixedImageType, MovingImageType> MetricType;
 typedef itk::MeanSquaresImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
 typedef typename	MetricType::Pointer											MetricTypePointer;
 
 typedef itk::RegularStepGradientDescentOptimizer								OptimizerType;
 typedef typename	OptimizerType::Pointer										OptimizerTypePointer;
-//~ typedef itk::LBFGSBOptimizer													OptimizerType;
-//~ typedef	typename	OptimizerType::Pointer										OptimizerTypePointer;
 
-typedef itk::CenteredEuler3DTransform< double >									TransformType;
+typedef itk::CenteredAffineTransform< double, 3 >								TransformType;
 typedef	typename	TransformType::Pointer										TransformTypePointer;
 
 typedef itk::LinearInterpolateImageFunction< MovingImageType, double >			InterpolatorType;
@@ -125,33 +122,20 @@ DIC()
 	m_CurrentMovingImage	= 0;
 
 	UseWholeMovingImage		= false;
-	m_FixedIRMult			= 1; // default size of the moving IR is 2.5 times the size of the fixed IR
+	m_FixedIRMult			= 1.5; 
 	
 	m_FixedROIFilter		= FixedROIFilterType::New();
 	m_MovingROIFilter		= MovingROIFilterType::New();
 	
 	// setup the registration metric
 	m_Metric				= MetricType::New();
-	m_Metric->UseAllPixelsOn();
-	//~ m_Metric->SetFixedImageSamplesIntensityThreshold ( 100 );
-	//~ m_Metric->SetUseSequentialSampling( true );
+	//~ m_Metric->UseAllPixelsOn();
+	m_Metric->SetUseSequentialSampling( true );
+	// Setup the transform
 	m_Transform				= TransformType::New();
 	// Setup the registration optimizer
 	m_Optimizer				= OptimizerType::New();
-	//~ OptimizerType::BoundSelectionType boundSelect( m_Transform->GetNumberOfParameters() );
-	//~ OptimizerType::BoundValueType upperBound( m_Transform->GetNumberOfParameters() );
-	//~ OptimizerType::BoundValueType lowerBound( m_Transform->GetNumberOfParameters() );
-//~ 
-	//~ boundSelect.Fill( 0 );
-	//~ upperBound.Fill( 0.0 );
-	//~ lowerBound.Fill( 0.0 );
-//~ 
-	//~ m_Optimizer->SetBoundSelection( boundSelect );
-	//~ m_Optimizer->SetUpperBound( upperBound );
-	//~ m_Optimizer->SetLowerBound( lowerBound );
-//~ 
-	//~ m_Optimizer->SetCostFunctionConvergenceFactor( 1.e7 );
-	//~ m_Optimizer->SetProjectedGradientTolerance( 1e-6 );
+	m_Optimizer->SetNumberOfIterations( 200 );
 	// Setup the registration interpolator
 	m_Interpolator			= InterpolatorType::New();
 	// Setup the registration
@@ -242,10 +226,46 @@ FixedImageRegionType* GetFixedImageRegionFromIndex( unsigned int regionNumber)
 	return this->m_FixedImageRegionList.at( regionNumber );
 }
 
-/** a function to get the fixed image region list. Returns the list pointer. **/
+/** a function to get the fixed image region list. Returns a pointer 
+ * to the list. **/
 FixedImageRegionListType* GetFixedImageRegionList()
 {
 	return &this->m_FixedImageRegionList;
+}
+
+/** a function to add a region to the end of the fixed image region list. **/
+void PushRegionOntoFixedImageRegionList( FixedImageRegionType *region )
+{
+	this->m_FixedImageRegionList.push_back( region );
+
+}
+
+/** This function takes the real-world location and returns the region
+ * of the fixed image based on the IRRadus. */
+void GetFixedImageRegionFromLocation( FixedImageRegionType *region, double *centerLocation )
+{
+	typename FixedImageType::IndexType						centerIndex;
+	typename FixedImageType::IndexType						startIndex;
+	typename FixedImageRegionType::SizeType					regionSize;
+	typename FixedImageRegionType::SizeType::SizeValueType	regionDiameter;	
+
+	this->m_FixedImage->TransformPhysicalPointToIndex( (typename FixedImageType::PointType) centerLocation, centerIndex );
+	regionDiameter = this->m_IRRadius*this->m_FixedIRMult*2+1;
+	regionSize.Fill(regionDiameter);
+	startIndex[0] = centerIndex[0] - this->m_IRRadius*this->m_FixedIRMult;
+	startIndex[1] = centerIndex[1] - this->m_IRRadius*this->m_FixedIRMult;
+	startIndex[2] = centerIndex[2] - this->m_IRRadius*this->m_FixedIRMult;
+	
+	// set the parameters of the region
+	region->SetSize(regionSize); 
+	region->SetIndex(startIndex);
+	
+	// if the region is invalid, change the parameters
+	if ( !this->IsRegionValid( region, this->m_FixedImage ) ) 
+	{
+		
+		this->FixImageRegion( region, this->m_FixedImage );
+	}
 }
 
 /** A function to return the i'th moving image region. */
@@ -262,11 +282,16 @@ MovingImageRegionType* GetMovingImageRegionFromIndex( unsigned int regionNumber 
 	return this->m_MovingImageRegionList.at( regionNumber );
 }
 
-/** a function to add a region to the end of the fixed image region list. **/
-void PushRegionOntoFixedImageRegionList( FixedImageRegionType *region )
+/** A function to get the moving image region list. Returns the list pointer **/
+MovingImageRegionListType* GetMovingImageRegionList()
 {
-	this->m_FixedImageRegionList.push_back( region );
+	return &this->m_MovingImageRegionList;
+}
 
+/** A function to add a region to the end of the moving image region list. **/
+void PushRegionOntoMovingImageRegionList( MovingImageRegionType *region )
+{
+	this->m_MovingImageRegionList.push_back( region );
 }
 
 /** This function takes the real-world location and returns the region
@@ -285,112 +310,86 @@ void GetMovingImageRegionFromLocation( MovingImageRegionType *region, double *ce
 	startIndex[1] = centerIndex[1] - this->m_IRRadius;
 	startIndex[2] = centerIndex[2] - this->m_IRRadius;
 	
-	region->SetSize(regionSize); // set the parameters of the region
+	// set the parameters of the region
+	region->SetSize(regionSize); 
 	region->SetIndex(startIndex);
-	if ( !this->IsMovingRegionValid( region) ) // if the region is invalid, change the parameters
-	{
-		
-		this->FixImageRegion( region, m_MovingImage );
-	}
-}
- 
-/** This function takes the real-world location and returns the region
- * of the fixed image based on the IRRadus. */
-void GetFixedImageRegionFromLocation( FixedImageRegionType *region, double *centerLocation )
-{
-	typename FixedImageType::IndexType						centerIndex;
-	typename FixedImageType::IndexType						startIndex;
-	typename FixedImageRegionType::SizeType					regionSize;
-	typename FixedImageRegionType::SizeType::SizeValueType	regionDiameter;	
-
-	this->m_FixedImage->TransformPhysicalPointToIndex( (typename FixedImageType::PointType) centerLocation, centerIndex );
-	regionDiameter = this->m_IRRadius*this->m_FixedIRMult*2+1;
-	regionSize.Fill(regionDiameter);
-	startIndex[0] = centerIndex[0] - this->m_IRRadius*this->m_FixedIRMult;
-	startIndex[1] = centerIndex[1] - this->m_IRRadius*this->m_FixedIRMult;
-	startIndex[2] = centerIndex[2] - this->m_IRRadius*this->m_FixedIRMult;
 	
-	region->SetSize(regionSize); // set the parameters of the region
-	region->SetIndex(startIndex);
-	if ( !this->IsFixedRegionValid( region ) ) // if the region is invalid, change the parameters
+	// if the region is invalid, change the parameters
+	if ( !this->IsRegionValid( region, this->m_MovingImage ) ) 
 	{
 		
-		this->FixImageRegion( region, m_FixedImage );
+		this->FixImageRegion( region, this->m_MovingImage );
 	}
 }
 
 /** This funciton will determine if a given fixed image region is valid.*/
-bool IsFixedRegionValid( FixedImageRegionType *region )
+bool IsRegionValid( FixedImageRegionType *region, FixedImageConstPointer image )
 {
 	typename FixedImageRegionType::SizeType	size = region->GetSize();
-	if( !this->m_FixedImage->GetLargestPossibleRegion().IsInside( *region ) || size[0] < 4 || size[1] < 4 || size[2] < 4){
+	
+	// if the region is not contained in the image, or a dimension is less than the IRRadius
+	if( !image->GetLargestPossibleRegion().IsInside( *region ) || size[0] < this->m_IRRadius || size[1] < this->m_IRRadius || size[2] < this->m_IRRadius){
 		return false;
 	}
 	
 	return true;
 }
 
-/** This function will determine if a given moving image region is valid. */
-bool IsMovingRegionValid( MovingImageRegionType *region )
-{
-	typename FixedImageRegionType::SizeType	size = region->GetSize();
-	if( !this->m_MovingImage->GetLargestPossibleRegion().IsInside( *region ) || size[0] < 4 || size[1] < 4 || size[2] < 4){
-		return false;
-	}
-	
-	return true;	
-}
-
 /** This function will modify a moving image region to make it valid.
  * Assumes that the fixed and moving images are of the same type. */
 void FixImageRegion( MovingImageRegionType *region, MovingImageConstPointer image )
 {
-	MovingImageRegionType						movingImageRegion		= image->GetLargestPossibleRegion();
-	typename MovingImageRegionType::IndexType	movingImageRegionIndex	= movingImageRegion.GetIndex();
-	typename MovingImageRegionType::SizeType	movingImageRegionSize	= movingImageRegion.GetSize();
-	unsigned int								movingImageDimension	= this->m_MovingImage->GetImageDimension();
+	MovingImageRegionType						imageRegion			= image->GetLargestPossibleRegion();
+	typename MovingImageRegionType::IndexType	imageRegionIndex	= imageRegion.GetIndex();
+	typename MovingImageRegionType::SizeType	imageRegionSize		= imageRegion.GetSize();
+	unsigned int								imageDimension		= image->GetImageDimension();
 	
-	typename MovingImageRegionType::SizeType	regionSize 				= region->GetSize();
-	typename MovingImageRegionType::IndexType	regionIndex				= region->GetIndex();
+	typename MovingImageRegionType::SizeType	regionSize 			= region->GetSize();
+	typename MovingImageRegionType::IndexType	regionIndex			= region->GetIndex();
 	
-	for (unsigned int i = 0; i<movingImageDimension; ++i)
+	for (unsigned int i = 0; i<imageDimension; ++i)
 	{
-		if ( regionIndex[i] < movingImageRegionIndex[i] ) // if region starts before the image
+		// if region starts before the image
+		if ( regionIndex[i] < imageRegionIndex[i] ) 
 		{
-			regionSize[i] = regionSize[i]-(movingImageRegionIndex[i]-regionIndex[i])>m_IRRadius ? regionSize[i]-(movingImageRegionIndex[i]-regionIndex[i]) : m_IRRadius; // change size to that inside the image, but use at least the perscribed IRRadius
-			regionIndex[i] = movingImageRegionIndex[i]; // change the index to the start of the image
+			// change size to that inside the image, but use at least the perscribed IRRadius
+			regionSize[i] = regionSize[i]-(imageRegionIndex[i]-regionIndex[i])>this->m_IRRadius ? regionSize[i]-(imageRegionIndex[i]-regionIndex[i]) : this->m_IRRadius; 
+			
+			// change the index to the start of the image
+			regionIndex[i] = imageRegionIndex[i]; 
 		}
-		if ( regionIndex[i] > (int)(movingImageRegionIndex[i] + movingImageRegionSize[i]) ) // if the region starts after the image finishes, throw a warning and use the closest part of the image.
+		
+		// if the region starts after the image finishes 
+		if ( regionIndex[i] > (int)(imageRegionIndex[i] + imageRegionSize[i]) ) 
 		{
+			// give a warning
 			std::stringstream msg("");
 			msg<<"Warning: The moving image region starts after the end of the moving image.  Using closest valid region."<<std::endl<<"Index: ["<<regionIndex[0]<<", "<<regionIndex[1]<<", "<<regionIndex[2]<<"]"<<std::endl<<"Size: ["<<regionSize[0]<<", "<<regionSize[1]<<", "<<regionSize[2]<<"]"<<std::endl;
-			regionIndex[i] = movingImageRegionSize[i] - (m_IRRadius+1);
-			regionSize[i] = m_IRRadius;
-		}		
-		if ( (regionIndex[i] + regionSize[i]) > (movingImageRegionIndex[i] + movingImageRegionSize[i]) ) // if the region finishes after the image
+			this->WriteToLogfile( msg.str() );
+			
+			// use the closest part of the image, but at least the IRRadius
+			regionIndex[i] = imageRegionSize[i] - (this->m_IRRadius+1);
+			regionSize[i] = this->m_IRRadius;
+		}
+		
+		// if the region finishes after the image
+		if ( (regionIndex[i] + regionSize[i]) > (imageRegionIndex[i] + imageRegionSize[i]) ) 
 		{
-			regionSize[i] = (movingImageRegionIndex[i] + movingImageRegionSize[i]) - (regionIndex[i]+1); // change size to that inside the image
-			if (regionSize[i] < m_IRRadius){
-				regionIndex[i] = movingImageRegionSize[i] - (m_IRRadius+1);
-				regionSize[i] = m_IRRadius;
-			} // use a minimum size of the IRRadius
+			// change size to that inside the image
+			regionSize[i] = (imageRegionIndex[i] + imageRegionSize[i]) - (regionIndex[i]+1); 
+			
+			// use a minimum size of the IRRadius
+			if (regionSize[i] < this->m_IRRadius){
+				regionIndex[i] = imageRegionSize[i] - (this->m_IRRadius+1);
+				regionSize[i] = this->m_IRRadius;
+			} 
 		}
 
 	}
+	
+	// set the region parameters
 	region->SetSize( regionSize );
 	region->SetIndex( regionIndex );
-}
-
-/** A function to get the moving image region list. Returns the list pointer **/
-MovingImageRegionListType* GetMovingImageRegionList()
-{
-	return &this->m_MovingImageRegionList;
-}
-
-/** A function to add a region to the end of the moving image region list. **/
-void PushRegionOntoMovingImageRegionList( MovingImageRegionType *region )
-{
-	this->m_MovingImageRegionList.push_back( region );
 }
 
 /** A function to get the Fixed ROI as an image from the ROI filter.*/
@@ -459,9 +458,7 @@ void SetMovingROIImage( MovingImagePointer roiImage )
 /** A function to get the registration of the two regions. */
 void UpdateRegionRegistration()
 {
-	//~ this->m_Metric->SetFixedImageRegion(  m_Registration->GetFixedImage()->GetBufferedRegion()  );
-	//~ this->m_Metric->Initialize();
-	
+	//~ this->m_Registration->GetMetric()->SetNumberOfSpatialSamples( this->m_Registration->GetFixedImage()->GetLargestPossibleRegion().GetNumberOfPixels()/5 );
 	try
 	{
 		std::stringstream msg("");
@@ -535,9 +532,10 @@ void SetInitialDisplacement(double *pixelData)
 {
 	typename DIC<FixedImageType,MovingImageType>::ImageRegistrationMethodType::ParametersType initialParameters;
 	initialParameters = this->m_Registration->GetInitialTransformParameters();
-	initialParameters[6] = *pixelData;
-	initialParameters[7] = *(pixelData +1);
-	initialParameters[8] = *(pixelData +2);
+	unsigned int nParameters = this->m_Registration->GetTransform()->GetNumberOfParameters();
+	initialParameters[nParameters-3] = *pixelData;
+	initialParameters[nParameters-2] = *(pixelData +1);
+	initialParameters[nParameters-1] = *(pixelData +2);
 	
 	this->m_Registration->SetInitialTransformParameters( initialParameters );
 }
@@ -546,10 +544,14 @@ void SetInitialDisplacement(double *pixelData)
  * This function assumes that the 4th 5th and 6th parameters of the
  * transform parameters are the rotation centre. Depending on your chosen
  * transform, this may not be the case and you should check the itk 
- * documentation to see.  
+ * documentation to see.
  * TODO: make a vector of equal length to the parameters vector called
  * transformRotationCenters, with type bool.  1's define locations of
- * rotation centers in the parameters. **/
+ * rotation centers in the parameters. 
+ * NOTE: this has been depriciated as the system now uses the transform
+ * initializer to set the center of rotation to the center of the image.
+ * That said, if you want to set center of rotation, than consider using
+ * this method. **/
 void SetRotationCenter( double *regionCenter )
 {
 	typename DIC<FixedImageType,MovingImageType>::ImageRegistrationMethodType::ParametersType initialParameters;
@@ -564,7 +566,7 @@ void SetRotationCenter( double *regionCenter )
 /** A function to set the transform to the identity transform. 
  * This function currently is only for the rotational transform.
  * TODO: make local a variable called identityTransform that must be
- * set by the user and will be generic.*/
+ * set by the user and will be generic. */
 void SetTransformToIdentity()
 {
 	typename DIC<FixedImageType,MovingImageType>::ImageRegistrationMethodType::ParametersType initialParameters;
@@ -578,8 +580,13 @@ void SetTransformToIdentity()
 	initialParameters[6] = 0;
 	initialParameters[7] = 0;
 	initialParameters[8] = 0;
-
-	this->m_Registration->SetInitialTransformParameters( initialParameters );
+	
+	if( !strcmp(this->m_Transform->GetNameOfClass(),"CenteredAffineTransform") ){
+		this->m_Transform->SetIdentity();
+	}
+	else{
+		this->m_Registration->SetInitialTransformParameters( initialParameters );
+	}
 }
 
 /** A function to set the logfile. */
@@ -614,7 +621,9 @@ void WriteToLogfile( std::string characters)
 /** A function to set the output directory .*/
 void SetOuputDirectory( std::string directory )
 {
-	this->m_OutputDirectory = directory;
+	if ( this->m_OutputDirectory.compare( directory ) != 0 ){
+		this->m_OutputDirectory = directory;
+	}
 }
 
 /** A function to get the output directory.*/
