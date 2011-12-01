@@ -39,6 +39,10 @@
 #include "itkCenteredEuler3DTransform.h"
 #include <itkCenteredTransformInitializer.h>
 
+// includes for resampling the moving image after global registraion
+#include "itkResampleImageFilter.h"
+#include "itkBSplineInterpolateImageFunction.h"
+
 #include <itkMattesMutualInformationImageToImageMetric.h>
 #include "itkLBFGSBOptimizer.h"
 #include <itkMeanSquaresImageToImageMetric.h>
@@ -94,6 +98,7 @@ typedef typename	MovingImageReaderType::Pointer								MovingImageReaderPointer;
 /** Type of the Image Registration Method */
 typedef	itk::ImageRegistrationMethod< FixedImageType, MovingImageType>			ImageRegistrationMethodType;
 typedef	typename	ImageRegistrationMethodType::Pointer						ImageRegistrationMethodPointer;
+typedef	typename	ImageRegistrationMethodType::ParametersType					RegistrationParametersType;
 
 typedef itk::MeanSquaresImageToImageMetric< FixedImageType, MovingImageType >	MetricType;
 typedef typename	MetricType::Pointer											MetricTypePointer;
@@ -659,6 +664,125 @@ OptimizerTypePointer GetOptimizer()
 {
 	return this->m_Optimizer;
 }
+
+/** A virtual method to return the region for the global registration to
+ * act on. This function will be overridden to provide the correct region
+ * for the different implementations of the global registration, depending
+ * on the type of analysis (mesh based, grid based, etc).*/
+virtual MovingImageRegionType GetGlobalRegistrationRegion() = 0;
+
+/** This function will use the image registration method from DIC to 
+ * align the images in the region bounded by m_DataImage's bounding box.*/
+RegistrationParametersType GlobalRegistration()
+{
+	// Use an ShrinkImageFilter to blur and downsample fixed and moving images to improve radius of convergance
+	typedef itk::ShrinkImageFilter< FixedImageType, FixedImageType > FixedResamplerType;
+	typedef itk::ShrinkImageFilter< MovingImageType, MovingImageType > MovingResamplerType;
+	
+	typename FixedResamplerType::Pointer	fixedResampler = FixedResamplerType::New();
+	typename MovingResamplerType::Pointer	movingResampler = MovingResamplerType::New();		
+	fixedResampler->SetInput( this->m_FixedImage );
+	movingResampler->SetInput( this->m_MovingImage );
+	fixedResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
+	movingResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
+	fixedResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
+	movingResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
+	std::stringstream msg("");
+	msg <<"Resampling for global registration"<<std::endl<<std::endl;
+	this->WriteToLogfile(msg.str());
+	fixedResampler->Update();
+	movingResampler->Update();
+	
+	// global registration - rotation is centred on the body
+	this->m_Registration->SetFixedImage( fixedResampler->GetOutput() );
+	this->m_Registration->SetMovingImage( movingResampler->GetOutput() );
+	this->m_TransformInitializer->SetFixedImage( fixedResampler->GetOutput() );
+	this->m_TransformInitializer->SetMovingImage( movingResampler->GetOutput() );
+	this->m_TransformInitializer->SetTransform( this->m_Transform );
+	this->m_TransformInitializer->GeometryOn();
+	this->m_TransformInitializer->InitializeTransform();
+	this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
+	
+	this->m_Registration->SetFixedImageRegion( this->GetGlobalRegistrationRegion() ); // set the limited analysis region
+	
+	this->m_Registration->SetFixedImageRegionDefined( true );
+	msg.str("");
+	msg << "Global registration in progress"<<std::endl<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	this->m_Registration->Update();
+	this->m_Registration->SetFixedImageRegionDefined( false );
+	
+	msg.str("");
+	msg << "Global Registration complete."<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	
+	double globalRegResults[3];// = new double[3];
+	RegistrationParametersType	finalParameters = this->m_Registration->GetLastTransformParameters();
+	msg.str("");
+	msg << "Final Params:"<< finalParameters<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	globalRegResults[0] = finalParameters[6];
+	globalRegResults[1] = finalParameters[7];
+	globalRegResults[2] = finalParameters[8];	
+	
+	msg.str("");
+	msg << "Global registration finished.\n Resulting displacement: ("<<globalRegResults[0]<<
+		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	
+	return finalParameters
+}
+
+/** This method will resample the moving image based on the parameters
+ * passed to it. Typically, this will be used to resample the moving 
+ * image based on the global registration.  This will remove any initial
+ * offsets in the images. While the entire moving image my not be needed
+ * in the DVC (indicating that resampling of the entire thing may be doing
+ * needless work) the advantage of having all rotations and translations
+ * already accounted for when starting the registration saves programming
+ * and analysis complexity. */ 
+void ResampleMovingImage( RegistrationParametersType tranformParameters )
+{
+	// setup the interpolator function for the resampling
+	typedef itk::BSplineInterpolateImageFunction<MovingImageType, double, double > RMIInterpolatorType; // RMI= ResampleMovingImage
+	RMIInterpolatorType::Pointer interpolator = RMIInterpolatorType::New();
+	interpolator->SetSplineOrder( 4 ); // minimize errors at the 0.2, and 0.8 pixel position (H. W. Schreier, et al, “Systematic errors in digital image correlation caused by intensity interpolation,” Optical Engineering, vol. 39, no. 11, pp. 2915-2921, Nov. 2000.
+	
+	// set up the transformation for the resampling
+	TransformTypePointer transform = TransformType::New(); // use the default transform. may cause problems if user modified the transform
+	
+	// create the resampler
+	typedef itk::ResampleImageFilter<MovingImageType, MovingImageType, double > RMIResamplerType; 
+	ResamplerType::Pointer	resampler = ResamplerType::New();
+	
+	// set the interpolator and transform and number of threads
+	resampler->SetInterpolator( interpolator );
+	resampler->SetTranform( tranform );
+	resampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() ); // use the same as the global registraion
+	
+	// use the current moving image as a template (extracts origin, spacing, and direction)
+	resampler->UseReferenceImageOn();
+	resampler->SetReferenceImage( this->m_MovingImage );
+	
+	// set the input image
+	resampler->SetInput( this->m_MovingImage );
+	
+	try{
+		resampler->Update();
+	}
+	catch( itk::ExceptionObject &err )
+	{
+		std::stringstream msg("");
+		msg<<"There was an error calling resampler->Update int DIC::ResampleMovingImage"<<std::endl;
+		msg<<"The error was: "<<err<<std::endl;
+		msg<<"Resampler Data: "<<resampler<<std::endl<<std::endl;
+		this->WriteToLogfile( msg.str() );
+		std::abort();
+	}
+	
+	this->SetMovingImage( resampler->GetOutput() );	
+}
+
 	
 protected:
 

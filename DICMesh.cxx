@@ -61,8 +61,8 @@ typedef typename DIC<TFixedImage,TMovingImage>::MovingImageRegionType		MovingIma
 typedef typename DIC<TFixedImage,TMovingImage>::FixedImageRegionListType	FixedImageRegionListType;
 typedef	typename DIC<TFixedImage,TMovingImage>::MovingImageRegionListType	MovingImageRegionListType;
 
-typedef typename DIC<TFixedImage,TMovingImage>::ImageRegistrationMethodType	ImageRegistrationType;
-typedef typename ImageRegistrationType::ParametersType							RegistrationParametersType;	
+typedef typename DIC<TFixedImage,TMovingImage>::ImageRegistrationMethodType	ImageRegistrationMethodType;
+typedef typename ImageRegistrationMethodType::ParametersType				RegistrationParametersType;	
 typedef typename DIC<TFixedImage,TMovingImage>::TransformInitializerType	TransformInitializerType;
 typedef typename DIC<TFixedImage,TMovingImage>::TransformType				TransformType;
 
@@ -1280,47 +1280,11 @@ double* CalculateStrainWeightedMovingAverage( double sigma, double mean, unsigne
 	return newPixel;
 }
 
-/** This function will use the image registration method inherited from 
- * DIC to align the images in the region bounded by m_DataImage's 
- * bounding box. It will use the ITK shrink image filter to apply a 
- * gaussian filter and downsample the images. This will increase the 
- * radius of convergence and speed up the registration. The value used
- * to downsample the images is stored in m_GlobalRegDownsampleValue*/
-void GlobalRegistration()
+/** This function will return the region that the global registration 
+ * registration should be conducted on. In the case of the DICMesh, this
+ * region is the bounding box of the mesh. */
+FixedImageRegionType GetGlobalRegistrationRegion()
 {
-	// Use an ShrinkImageFilter to blur and downsample fixed and moving images to improve radius of convergance
-	typedef itk::ShrinkImageFilter< FixedImageType, FixedImageType > FixedResamplerType;
-	typename FixedResamplerType::Pointer	fixedResampler = FixedResamplerType::New();
-	typedef itk::ShrinkImageFilter< MovingImageType, MovingImageType > MovingResamplerType;
-	typename MovingResamplerType::Pointer	movingResampler = MovingResamplerType::New();
-		
-	fixedResampler->SetInput( this->m_FixedImage );
-	movingResampler->SetInput( this->m_MovingImage );
-	
-	fixedResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
-	movingResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
-	
-	fixedResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
-	movingResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
-	
-	std::stringstream msg(""); // note the current action in the logfile
-	msg <<"Resampling for global registration"<<std::endl<<std::endl;
-	this->WriteToLogfile( msg.str() );
-	
-	fixedResampler->Update();
-	movingResampler->Update();
-	
-	// global registration - rotation is centred on the body
-	this->m_Registration->SetFixedImage( fixedResampler->GetOutput() );
-	this->m_Registration->SetMovingImage( movingResampler->GetOutput() );
-	this->SetTransformToIdentity();
-	this->m_TransformInitializer->SetFixedImage( fixedResampler->GetOutput() );
-	this->m_TransformInitializer->SetMovingImage( movingResampler->GetOutput() );
-	this->m_TransformInitializer->SetTransform( this->m_Transform );
-	this->m_TransformInitializer->GeometryOn();
-	this->m_TransformInitializer->InitializeTransform();
-	this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
-	
 	// restrict the Global registration to just the bounding box of the mesh
 	double meshBBox[6];// = new double[6];
 	this->m_DataImage->GetBounds( meshBBox );
@@ -1337,42 +1301,15 @@ void GlobalRegistration()
 	fixedResampler->GetOutput()->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart); // convert min point to start index
 	
 	typename FixedImageType::SpacingType fixedSpacing = fixedResampler->GetOutput()->GetSpacing(); // convert dimensinos to size in pixels
-	
 	typename FixedImageType::SizeType fixedImageROILengths;
 	fixedImageROILengths[0] = (int)std::floor(meshSize[0]/fixedSpacing[0]);
 	fixedImageROILengths[1] = (int)std::floor(meshSize[1]/fixedSpacing[1]);
 	fixedImageROILengths[2] = (int)std::floor(meshSize[2]/fixedSpacing[2]);
-	
 	typename FixedImageType::RegionType fixedAnalysisRegion;
 	fixedAnalysisRegion.SetIndex( fixedImageROIStart );
 	fixedAnalysisRegion.SetSize( fixedImageROILengths );
 	
-	this->m_Registration->SetFixedImageRegion( fixedAnalysisRegion ); // set the limited analysis region
-	this->m_Registration->SetFixedImageRegionDefined( true );
-	
-	msg.str("");
-	msg << "Global registration in progress"<<std::endl<<std::endl;
-	this->WriteToLogfile( msg.str() );
-	this->m_Registration->Update();
-	this->m_Registration->SetFixedImageRegionDefined( false ); // limited analysis regions will not be used in the DVC, so set to false immediately after global registration.
-	
-	msg.str("");
-	msg << "Global Registration complete."<<std::endl;
-	this->WriteToLogfile( msg.str() );
-
-	RegistrationParametersType	finalParameters = this->m_Registration->GetLastTransformParameters();
-	msg.str("");
-	msg << "Final Params:"<< finalParameters<<std::endl;
-	this->WriteToLogfile( msg.str() );
-	double globalRegResults[3] = { 0 };	
-	this->GetLastDisplacement( globalRegResults );
-	
-	msg.str("");
-	msg << "Global registration finished.\n Resulting displacement: ("<<globalRegResults[0]<<
-		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
-	this->WriteToLogfile( msg.str() );
-	
-	this->SetMeshInitialValue( globalRegResults );
+	return fixedAnalysisRegion;
 }
 
 /** A function to set the downsample value used by the global
