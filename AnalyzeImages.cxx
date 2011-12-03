@@ -244,14 +244,13 @@ int main(int argc, char **argv)
 	DICType::ImageRegistrationMethodPointer		registration = DICMethod->GetRegistrationMethod();
 	DICType::TransformTypePointer				transform = DICMethod->GetTransform();
 	DICType::OptimizerTypePointer				optimizer = DICMethod->GetOptimizer();
-	typedef DICType::ImageRegistrationMethodType::ParametersType	ParametersType;
 	
 	/** Setup the registration */
-	unsigned int nThreads = 8;
+	unsigned int nThreads = 6;
 	registration->SetNumberOfThreads(	nThreads	);
 	
 	transform->SetIdentity();
-	ParametersType	initialParameters = transform->GetParameters();
+	DICType::ImageRegistrationMethodType::ParametersType	initialParameters = transform->GetParameters();
 	registration->SetInitialTransformParameters( initialParameters );
 	
 	RSOCommandIterationUpdate::Pointer observer = RSOCommandIterationUpdate::New();	// thes lines will make the optimizer print out its
@@ -260,8 +259,7 @@ int main(int argc, char **argv)
 	
 	/** The rotation part of the optimization is expected to be small 
 	 * and it is more sensitive.  Use rotation values 3% of the translations. */
-	typedef DICType::OptimizerType::ScalesType		OptimizerScalesType;
-	OptimizerScalesType optScales( transform->GetNumberOfParameters() );	// optimizer scales must be chosen carefully.  These were based off of
+	DICType::OptimizerType::ScalesType optScales( transform->GetNumberOfParameters() );	// optimizer scales must be chosen carefully.  These were based off of
 	
 	if ( !strcmp(DICMethod->GetRegistrationMethod()->GetTransform()->GetNameOfClass(),"CenteredEuler3DTransform")){
 	optScales[0] = 100;														// prelininary tests on my data.  There is some help on the ITK wiki
@@ -299,7 +297,15 @@ int main(int argc, char **argv)
 	// radius of convergence and speeds things up.*/
 	optimizer->SetMaximumStepLength(0.010); // large steps for the global registration (based on visual alignment in ParaView)
 	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration*/
-	if ( !restartFile ) DICMethod->GlobalRegistration();
+	if ( !restartFile ){
+		DICType::ImageRegistrationMethodType::ParametersType globalRegistrationResult = DICMethod->GlobalRegistration();
+		
+		msg.str("");
+		msg << "Resampling the moving image based on global registration result:"<<std::endl<<globalRegistrationResult<<std::endl;
+		DICMethod->WriteToLogfile( msg.str() );
+		
+		DICMethod->ResampleMovingImage( globalRegistrationResult );
+	}
 	
 	typedef itk::BSplineInterpolateImageFunction<FixedImageType, double, double>  BSplineInterpolatorType;
 	BSplineInterpolatorType::Pointer	bSplineInterpolator = BSplineInterpolatorType::New();

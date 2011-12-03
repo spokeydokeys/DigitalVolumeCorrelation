@@ -39,7 +39,8 @@
 #include "itkCenteredEuler3DTransform.h"
 #include <itkCenteredTransformInitializer.h>
 
-// includes for resampling the moving image after global registraion
+// includes for global registration and resampling the moving image
+#include "itkShrinkImageFilter.h"
 #include "itkResampleImageFilter.h"
 #include "itkBSplineInterpolateImageFunction.h"
 
@@ -150,6 +151,9 @@ DIC()
 	m_Registration->SetOptimizer( m_Optimizer );
 	m_Registration->SetMetric( m_Metric );
 	m_TransformInitializer	= TransformInitializerType::New();
+	
+	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
+
 
 }
 
@@ -703,12 +707,27 @@ RegistrationParametersType GlobalRegistration()
 	this->m_TransformInitializer->InitializeTransform();
 	this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
 	
-	this->m_Registration->SetFixedImageRegion( this->GetGlobalRegistrationRegion() ); // set the limited analysis region
+	// get the global registration region.
+	FixedImageRegionType registrationRegion = this->GetGlobalRegistrationRegion();
+	typename FixedImageRegionType::SizeType registrationSize = registrationRegion.GetSize();
+	typename FixedImageRegionType::IndexType registrationIndex = registrationRegion.GetIndex();
+	registrationSize[0] = (int) floor( registrationSize[0]/this->m_GlobalRegDownsampleValue ); // Since GetGlobalRegistrationRegion returns the region in terms of m_FixedImge, the return values will have to be modifed to take into account the ShrinkImageFilter changes.
+	registrationSize[1] = (int) floor( registrationSize[1]/this->m_GlobalRegDownsampleValue );
+	registrationSize[2] = (int) floor( registrationSize[2]/this->m_GlobalRegDownsampleValue );
+	registrationIndex[0] = (int) floor( registrationIndex[0]/this->m_GlobalRegDownsampleValue );
+	registrationIndex[1] = (int) floor( registrationIndex[1]/this->m_GlobalRegDownsampleValue );
+	registrationIndex[2] = (int) floor( registrationIndex[2]/this->m_GlobalRegDownsampleValue );
+	registrationRegion.SetSize( registrationSize );
+	registrationRegion.SetIndex( registrationIndex );
 	
+	// set the limited analysis region
+	this->m_Registration->SetFixedImageRegion( registrationRegion ); 
 	this->m_Registration->SetFixedImageRegionDefined( true );
+	
 	msg.str("");
 	msg << "Global registration in progress"<<std::endl<<std::endl;
 	this->WriteToLogfile( msg.str() );
+	
 	this->m_Registration->Update();
 	this->m_Registration->SetFixedImageRegionDefined( false );
 	
@@ -730,7 +749,7 @@ RegistrationParametersType GlobalRegistration()
 		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	
-	return finalParameters
+	return finalParameters;
 }
 
 /** This method will resample the moving image based on the parameters
@@ -745,7 +764,7 @@ void ResampleMovingImage( RegistrationParametersType tranformParameters )
 {
 	// setup the interpolator function for the resampling
 	typedef itk::BSplineInterpolateImageFunction<MovingImageType, double, double > RMIInterpolatorType; // RMI= ResampleMovingImage
-	RMIInterpolatorType::Pointer interpolator = RMIInterpolatorType::New();
+	typename RMIInterpolatorType::Pointer interpolator = RMIInterpolatorType::New();
 	interpolator->SetSplineOrder( 4 ); // minimize errors at the 0.2, and 0.8 pixel position (H. W. Schreier, et al, “Systematic errors in digital image correlation caused by intensity interpolation,” Optical Engineering, vol. 39, no. 11, pp. 2915-2921, Nov. 2000.
 	
 	// set up the transformation for the resampling
@@ -753,12 +772,12 @@ void ResampleMovingImage( RegistrationParametersType tranformParameters )
 	
 	// create the resampler
 	typedef itk::ResampleImageFilter<MovingImageType, MovingImageType, double > RMIResamplerType; 
-	ResamplerType::Pointer	resampler = ResamplerType::New();
+	typename RMIResamplerType::Pointer	resampler = RMIResamplerType::New();
 	
 	// set the interpolator and transform and number of threads
 	resampler->SetInterpolator( interpolator );
-	resampler->SetTranform( tranform );
-	resampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() ); // use the same as the global registraion
+	resampler->SetTransform( transform );
+	resampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() ); // use the same as the global registration
 	
 	// use the current moving image as a template (extracts origin, spacing, and direction)
 	resampler->UseReferenceImageOn();
@@ -783,6 +802,21 @@ void ResampleMovingImage( RegistrationParametersType tranformParameters )
 	this->SetMovingImage( resampler->GetOutput() );	
 }
 
+/** A function to set the downsample value used by the global
+ * registration. The default value is 3. */
+void SetGlobalRegistrationDownsampleValue( unsigned int value )
+{
+	if (m_GlobalRegDownsampleValue != value){
+		this->m_GlobalRegDownsampleValue = value;
+	}
+}
+
+/** A function to get the downsample value used by the global
+ * registration. */
+unsigned int GetGlobalRegistrationDownsampleValue()
+{
+	return this->m_GlobalRegDownsampleValue;
+}
 	
 protected:
 
@@ -811,6 +845,7 @@ TransformInitializerTypePointer		m_TransformInitializer;
 
 std::string							m_LogfileName;
 std::string							m_OutputDirectory;
+unsigned int						m_GlobalRegDownsampleValue;
 }; // end class DIC
 
 #endif // DIC_H

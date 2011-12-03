@@ -84,7 +84,6 @@ DICMesh()
 	m_strainErrorTolerance = 1;	
 	m_pointsList = vtkSmartPointer<vtkIdList>::New(); // the points list for analysis
 	m_maxMeticValue = -0.00; // TODO: make this setable using a method
-	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
 }
 
 /** Destructor **/
@@ -1298,9 +1297,9 @@ FixedImageRegionType GetGlobalRegistrationRegion()
 	meshSize[2] = meshBBox[5]-meshBBox[4];
 		
 	typename FixedImageType::IndexType fixedImageROIStart;
-	fixedResampler->GetOutput()->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart); // convert min point to start index
+	this->m_FixedImage->TransformPhysicalPointToIndex(meshMinPt,fixedImageROIStart); // convert min point to start index
 	
-	typename FixedImageType::SpacingType fixedSpacing = fixedResampler->GetOutput()->GetSpacing(); // convert dimensinos to size in pixels
+	typename FixedImageType::SpacingType fixedSpacing = this->m_FixedImage->GetSpacing(); // convert dimensinos to size in pixels
 	typename FixedImageType::SizeType fixedImageROILengths;
 	fixedImageROILengths[0] = (int)std::floor(meshSize[0]/fixedSpacing[0]);
 	fixedImageROILengths[1] = (int)std::floor(meshSize[1]/fixedSpacing[1]);
@@ -1310,22 +1309,6 @@ FixedImageRegionType GetGlobalRegistrationRegion()
 	fixedAnalysisRegion.SetSize( fixedImageROILengths );
 	
 	return fixedAnalysisRegion;
-}
-
-/** A function to set the downsample value used by the global
- * registration. The default value is 3. */
-void SetGlobalRegistrationDownsampleValue( unsigned int value )
-{
-	if (m_GlobalRegDownsampleValue != value){
-		this->m_GlobalRegDownsampleValue = value;
-	}
-}
-
-/** A function to get the downsample value used by the global
- * registraion. */
-unsigned int GetGlobalRegistrationDownsampleValue()
-{
-	return this->m_GlobalRegDownsampleValue;
 }
 
 /** A function to set the error tolerance in units of standard 
@@ -1431,7 +1414,7 @@ double						m_strainErrorTolerance;
 double						m_maxMeticValue; // this because I'm using the normalized x-correlation coefficient metric
 vtkSmartPointer<vtkIdList>	m_pointsList;
 RegistrationParametersType	m_GlobalRegistrationParameters;
-unsigned int				m_GlobalRegDownsampleValue;
+
 	
 }; // end class DICMesh
 
