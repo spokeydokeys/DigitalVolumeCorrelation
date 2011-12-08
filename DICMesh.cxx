@@ -23,8 +23,6 @@
 #include <cstring>
 #include <ctime>
 #include "DIC.cxx"
-//~ #include "itkMesh.h"
-//~ #include "itkTetrahedronCell.h"
 #include <vtkDoubleArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkPoints.h>
@@ -38,11 +36,7 @@
 #include <vtkCellDerivatives.h>
 #include <vtkCellDataToPointData.h>
 #include <vtkMath.h>
-//~ #include <vtkImageGaussianSmooth.h>
 #include <vtkImageData.h>
-
-//~ #include <itkImageFileWriter.h>
-//~ #include <itkShrinkImageFilter.h>
 
 template<typename TFixedImage, typename TMovingImage>
 class DICMesh : public DIC<TFixedImage, TMovingImage>
@@ -62,7 +56,6 @@ typedef typename DIC<TFixedImage,TMovingImage>::FixedImageRegionListType	FixedIm
 typedef	typename DIC<TFixedImage,TMovingImage>::MovingImageRegionListType	MovingImageRegionListType;
 
 typedef typename DIC<TFixedImage,TMovingImage>::ImageRegistrationMethodType	ImageRegistrationMethodType;
-typedef typename ImageRegistrationMethodType::ParametersType				RegistrationParametersType;	
 typedef typename DIC<TFixedImage,TMovingImage>::TransformInitializerType	TransformInitializerType;
 typedef typename DIC<TFixedImage,TMovingImage>::TransformType				TransformType;
 
@@ -77,7 +70,6 @@ typedef		vtkSmartPointer<vtkDoubleArray>			DataImagePixelPointer;
 DICMesh()
 {
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
-	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
 	m_displacementErrorTolerance = 2; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_strainErrorTolerance = 1;	
@@ -349,7 +341,6 @@ void SetDataImage( vtkUnstructuredGrid *initialDataImage )
 	if (this->m_DataImage.GetPointer() != initialDataImage){
 		this->m_DataImage = initialDataImage;
 	}
-	this->KDTreeSetAndBuild();
 }
 
 
@@ -367,14 +358,6 @@ void  WriteToOutputDataFile(std::string outFile)
 	writer->SetFileTypeToASCII();
 	writer->SetInput( this->m_DataImage );
 	writer->Update();
-}
-
-/** A function to build the KDTree locator from the data image.  This method
- * is called when the data image is set. */
-void KDTreeSetAndBuild()
-{
-	this->m_KDTree->SetDataSet( this->m_DataImage );
-	this->m_KDTree->BuildLocatorFromPoints( this->m_DataImage->GetPoints() );
 }
 
 /** A function to find the values that are outside a given bounds 
@@ -950,9 +933,8 @@ void MedianImageFilter(unsigned int N)
 	unsigned int nPoints = tempImage->GetNumberOfPoints();
 	for( unsigned int i = 0; i < nPoints; ++i ){
 		double *cPoint = tempImage->GetPoint( i );
-		// find the 7 closest points to the position of each point
+		// find the connected neighbouring points
 		vtkSmartPointer<vtkIdList> pointList = vtkSmartPointer<vtkIdList>::New();
-		//~ this->m_KDTree->FindClosestNPoints( N, cPoint, pointList );
 		this->GetNeighbouringPoints( i, pointList );
 		// calculate magnitudes
 		double neighbourhoodMagnitudes[N];
@@ -1307,13 +1289,11 @@ bool IsReadyForRegistration()
 private:
 
 DataImagePointer			m_DataImage;
-vtkSmartPointer<vtkPKdTree>	m_KDTree;
 double						m_errorRadius;
 double						m_displacementErrorTolerance;
 double						m_strainErrorTolerance;
 double						m_maxMeticValue; // this because I'm using the normalized x-correlation coefficient metric
 vtkSmartPointer<vtkIdList>	m_pointsList;
-RegistrationParametersType	m_GlobalRegistrationParameters;
 
 	
 }; // end class DICMesh
