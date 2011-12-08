@@ -343,8 +343,6 @@ void SetDataImage( vtkUnstructuredGrid *initialDataImage )
 	}
 }
 
-
-
 unsigned int GetPointId( unsigned int index )
 {
 	return this->m_pointsList->GetId( index );
