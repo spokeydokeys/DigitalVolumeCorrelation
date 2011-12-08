@@ -71,7 +71,6 @@ typedef		vtkSmartPointer<vtkPoints>				DataImagePointsPointer;
 typedef		vtkSmartPointer<vtkDoubleArray>			DataImagePixelPointer;
 
 
-
 /* Methods. **/
 
 /** Constructor **/
@@ -315,7 +314,7 @@ void SetMeshInitialValue( double initialData[] )
 }
 
 /** Get a pixel value from the mesh using an index */
-void GetMeshPixelValueFromIndex( vtkIdType index, double *pixel )
+void GetPixelValueFromIndex( unsigned int index, double *pixel )
 {
 	this->m_DataImage->GetPointData()->GetArray("Displacement")->GetTuple( index, pixel );
 }
@@ -327,13 +326,13 @@ void GetMeshPixelOptimizerFromIndex( vtkIdType index, double *opt )
 }
 
 /** Set a pixel value in the mesh using an index */
-void SetMeshPixelValueFromIndex(vtkIdType index, double *pixel )
+void SetPixelValueFromIndex(unsigned int index, double *pixel )
 {
 	this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( index, pixel );
 }
 
 /** Set the value of the optimizer at a certain point. */
-void SetMeshPixelOptimizerFromIndex( vtkIdType index, double *opt )
+void SetPixelOptimizerFromIndex( unsigned int index, double *opt )
 {
 	this->m_DataImage->GetPointData()->GetArray("Optimizer Value")->SetTuple( index, opt );
 }
@@ -353,151 +352,15 @@ void SetDataImage( vtkUnstructuredGrid *initialDataImage )
 	this->KDTreeSetAndBuild();
 }
 
-/** Get the pointer to the data image. */
-DataImagePointer GetDataImage()
-{
-	return this->m_DataImage;
-}
 
-/** a function to execute the analysis. */
-void ExecuteDIC()
+
+unsigned int GetPointId( unsigned int index )
 {
-	std::stringstream msg(""); // test if everything is set
-	if( !this->m_Registration ){
-		msg.str("");
-		msg << "Registration not set.  Please define and set the\nregistration using the SetRegistrationMethod() method.\n";
-		this->WriteToLogfile( msg.str() );
-		std::abort();
-	}
-	if( !this->m_FixedImage ){
-		msg.str("");
-		msg << "Fixed image not set.  Please define and set the\n fixed image using the SetFixedImage() method.\n";
-		this->WriteToLogfile( msg.str() );
-		std::abort();
-	}
-	if( !this->m_MovingImage ){
-		msg.str("");
-		msg << "Moving image not set.  Please define and set the\n moving image using the SetMovingImage() method.\n";
-		this->WriteToLogfile( msg.str() );
-		std::abort();		
-	}
-	
-	if( !this->m_DataImage ){
-		msg.str("");
-		msg << "The data image not set.  Please define and set the\n initial data image using either the ReadMeshFromGmshFile or\n SetDataImage() methods.\n";
-		this->WriteToLogfile( msg.str() );
-		std::abort();		
-	}
-	
-	if( this->m_FixedImageRegionList.empty() ){ // if the region list is empty, create full region lists
-		this->CalculateInitialFixedImageRegionList();
-	}
-	if( this->m_MovingImageRegionList.empty() ){
-		this->CalculateInitialMovingImageRegionList();
-	}
-		
-	struct tm * timeValue; // record the time
-	std::time_t rawTime;
-	std::time( &rawTime );
-	timeValue = std::localtime( &rawTime );
-	msg.str("");
-	msg << "Starting DIC at: "<<std::asctime( timeValue )<<std::endl;
-	this->WriteToLogfile( msg.str() );
-	
-	// visit every point in the points list
-	unsigned int nMeshPoints = this->m_pointsList->GetNumberOfIds();
-	for( unsigned int i = 0; i<nMeshPoints; ++i){
-		vtkIdType pointId = this->m_pointsList->GetId( i );
-		
-		msg.str("");
-		msg << "Starting image registraion for point: "<<i+1<<" of "<<nMeshPoints<<" (mesh index "<<pointId<<")"<<std::endl;
-		this->WriteToLogfile( msg.str() );
-		
-		std::time_t rawTime; // record the time for each DVC
-		struct tm * timeValue;
-		std::time( &rawTime );
-		timeValue = std::localtime( &rawTime );
-		msg.str("");
-		msg << "Time: "<<std::asctime( timeValue );
-		this->WriteToLogfile( msg.str() );
-		
-		FixedImageRegionType	*fixedRegion = new FixedImageRegionType ; // get the fixed image from the fixed image list
-		FixedImagePointer		fixedImage;
-		fixedRegion = this->GetFixedImageRegionFromIndex( i );
-		fixedImage = this->GetFixedROIAsImage( fixedRegion );
-		this->SetFixedROIImage( fixedImage );
-		
-		MovingImageRegionType	*movingRegion = new MovingImageRegionType; // get the moving image from the moving image list
-		MovingImagePointer		movingImage;
-		movingRegion = this->GetMovingImageRegionFromIndex( i );
-		movingImage = this->GetMovingROIAsImage( movingRegion );
-		this->SetMovingROIImage( movingImage );
-		
-		this->SetTransformToIdentity(); // Set the transform to do nothing
-		
-		// initialize the transform to perform rotations about the fixed region center
-		this->m_TransformInitializer->SetFixedImage( this->m_Registration->GetFixedImage() ); 
-		this->m_TransformInitializer->SetMovingImage( this->m_Registration->GetMovingImage() );
-		this->m_TransformInitializer->SetTransform( this->m_Transform );
-		this->m_TransformInitializer->GeometryOn();
-		this->m_TransformInitializer->InitializeTransform();
-		this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
-		
-		double	*displacementData = new double[3];  // set the initial displacement
-		this->GetMeshPixelValueFromIndex( pointId, displacementData );
-		this->SetInitialDisplacement( displacementData );
-		
-		msg.str("");
-		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
-		this->WriteToLogfile( msg.str() );
-		
-		// if the optimizer is the lbfgsb then set the bounds based on teh current displacement
-		if( !strcmp(this->m_Registration->GetOptimizer()->GetNameOfClass(),"LBFGSBOptimizer") ){
-			unsigned int nParameters = this->m_Registration->GetTransform()->GetNumberOfParameters();
-			itk::Array< long > boundSelect( nParameters );
-			itk::Array< double > upperBound( nParameters );
-			itk::Array< double > lowerBound( nParameters );
-			
-			boundSelect.Fill( 0 );
-			boundSelect[nParameters-3] = 2;
-			boundSelect[nParameters-2] = 2;
-			boundSelect[nParameters-1] = 2;
-			typename FixedImageType::SpacingType imageSpacing = this->m_Registration->GetFixedImage()->GetSpacing();
-			upperBound[nParameters-3] = *displacementData + .5*imageSpacing[0];
-			upperBound[nParameters-2] = *(displacementData+1) + .5*imageSpacing[1];
-			upperBound[nParameters-1] = *(displacementData+2) + .5*imageSpacing[2];
-			lowerBound.Fill( 0 );
-			lowerBound[nParameters-3] = *displacementData - .5*imageSpacing[0];
-			lowerBound[nParameters-2] = *(displacementData+1) - .5*imageSpacing[1];
-			lowerBound[nParameters-1] = *(displacementData+2) - .5*imageSpacing[2];
-			
-			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetBoundSelection( boundSelect );
-			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetUpperBound( upperBound );
-			reinterpret_cast<itk::LBFGSBOptimizer *>(this->m_Registration->GetOptimizer())->SetLowerBound( lowerBound );
-		}
-		
-		// update the registration
-		this->UpdateRegionRegistration();
-		
-		// output the results
-		double *lastDisp = new double[3];
-		this->GetLastDisplacement( lastDisp );
-		this->SetMeshPixelValueFromIndex( pointId, lastDisp );
-		double *lastOpt = new double;
-		this->GetLastOptimizer( lastOpt );
-		this->SetMeshPixelOptimizerFromIndex( pointId, lastOpt );
-		msg.str("");
-		msg << "Final displacement value: ("<<*lastDisp<<", "<<*(lastDisp+1)<<", "<<*(lastDisp+2)<<")"<<std::endl <<
-			"Optimizer stop condition: " << this->m_Registration->GetOptimizer()->GetStopConditionDescription() << std::endl <<
-			"Final optimizer value: "<<*lastOpt<<std::endl<<std::endl;
-		this->WriteToLogfile( msg.str() );
-		std::string debugFile = this->m_OutputDirectory + "/debug.vtk";
-		this->WriteMeshToVTKFile( debugFile );
-	}
+	return this->m_pointsList->GetId( index );
 }
 
 /** A function to write the mesh data to a VTK ASCII file. */
-void WriteMeshToVTKFile(std::string outFile)
+void  WriteToOutputDataFile(std::string outFile)
 {
 	vtkSmartPointer<vtkUnstructuredGridWriter>	writer = vtkSmartPointer<vtkUnstructuredGridWriter>::New();
 	writer->SetFileName( outFile.c_str() );
@@ -1402,6 +1265,43 @@ void GetNeighbouringPoints( vtkIdType id, vtkSmartPointer<vtkIdList> idList )
 			}
 		}
 	}
+}
+
+DataImagePointer GetDataImage()
+{
+	return this->m_DataImage;
+}
+
+bool IsReadyForRegistration()
+{
+	std::stringstream msg("");
+	if( !this->m_Registration ){
+		msg.str("");
+		msg << "Registration not set.  Please define and set the\nregistration using the SetRegistrationMethod() method.\n";
+		this->WriteToLogfile( msg.str() );
+		return false;
+	}
+	if( !this->m_FixedImage ){
+		msg.str("");
+		msg << "Fixed image not set.  Please define and set the\n fixed image using the SetFixedImage() method.\n";
+		this->WriteToLogfile( msg.str() );
+		return false;
+	}
+	if( !this->m_MovingImage ){
+		msg.str("");
+		msg << "Moving image not set.  Please define and set the\n moving image using the SetMovingImage() method.\n";
+		this->WriteToLogfile( msg.str() );
+		return false;		
+	}
+	
+	if( !this->GetDataImage() ){
+		msg.str("");
+		msg << "The data image not set.  Please define and set the\n initial data image using either the ReadMeshFromGmshFile or\n SetDataImage() methods.\n";
+		this->WriteToLogfile( msg.str() );
+		return false;		
+	}
+	
+	return true;
 }
 
 private:

@@ -49,6 +49,8 @@
 #include <itkMeanSquaresImageToImageMetric.h>
 #include <itkCenteredAffineTransform.h>
 
+
+
 template <typename TFixedImage, typename TMovingImage>
 class DIC
 {
@@ -116,6 +118,7 @@ typedef typename	InterpolatorType::Pointer									InterpolatorTypePointer;
 typedef itk::CenteredTransformInitializer<TransformType,FixedImageType,MovingImageType>	TransformInitializerType;
 typedef typename	TransformInitializerType::Pointer							TransformInitializerTypePointer;
 
+
 /** Methods **/
 /** Constructor **/
 DIC()
@@ -153,8 +156,7 @@ DIC()
 	m_TransformInitializer	= TransformInitializerType::New();
 	
 	m_GlobalRegDownsampleValue = 3; // This value is the default downsample when preforming the global registration.
-
-
+	
 }
 
 /** Destructor **/
@@ -677,7 +679,8 @@ virtual MovingImageRegionType GetGlobalRegistrationRegion() = 0;
 
 /** This function will use the image registration method from DIC to 
  * align the images in the region bounded by m_DataImage's bounding box.*/
-RegistrationParametersType GlobalRegistration()
+ /** TODO: USe MultiResolutionImageRegistrationMethod in this method. */ 
+const typename ImageRegistrationMethodType::TransformOutputType* GlobalRegistration()
 {
 	// Use an ShrinkImageFilter to blur and downsample fixed and moving images to improve radius of convergance
 	typedef itk::ShrinkImageFilter< FixedImageType, FixedImageType > FixedResamplerType;
@@ -749,7 +752,7 @@ RegistrationParametersType GlobalRegistration()
 		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	
-	return finalParameters;
+	return this->m_Registration->GetOutput();
 }
 
 /** This method will resample the moving image based on the parameters
@@ -760,15 +763,15 @@ RegistrationParametersType GlobalRegistration()
  * needless work) the advantage of having all rotations and translations
  * already accounted for when starting the registration saves programming
  * and analysis complexity. */ 
-void ResampleMovingImage( RegistrationParametersType tranformParameters )
+void ResampleMovingImage( const typename ImageRegistrationMethodType::TransformOutputType* transformParameters )
 {
 	// setup the interpolator function for the resampling
 	typedef itk::BSplineInterpolateImageFunction<MovingImageType, double, double > RMIInterpolatorType; // RMI= ResampleMovingImage
 	typename RMIInterpolatorType::Pointer interpolator = RMIInterpolatorType::New();
 	interpolator->SetSplineOrder( 4 ); // minimize errors at the 0.2, and 0.8 pixel position (H. W. Schreier, et al, “Systematic errors in digital image correlation caused by intensity interpolation,” Optical Engineering, vol. 39, no. 11, pp. 2915-2921, Nov. 2000.
 	
-	// set up the transformation for the resampling
-	TransformTypePointer transform = TransformType::New(); // use the default transform. may cause problems if user modified the transform
+	//~ // set up the transformation for the resampling
+	//~ TransformTypePointer transform = TransformType::New(); // use the default transform. may cause problems if user modified the transform
 	
 	// create the resampler
 	typedef itk::ResampleImageFilter<MovingImageType, MovingImageType, double > RMIResamplerType; 
@@ -776,12 +779,12 @@ void ResampleMovingImage( RegistrationParametersType tranformParameters )
 	
 	// set the interpolator and transform and number of threads
 	resampler->SetInterpolator( interpolator );
-	resampler->SetTransform( transform );
+	resampler->SetTransform( transformParameters->Get() );
 	resampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() ); // use the same as the global registration
 	
 	// use the current moving image as a template (extracts origin, spacing, and direction)
 	resampler->UseReferenceImageOn();
-	resampler->SetReferenceImage( this->m_MovingImage );
+	resampler->SetReferenceImage( this->GetFixedImage() );
 	
 	// set the input image
 	resampler->SetInput( this->m_MovingImage );
@@ -817,6 +820,142 @@ unsigned int GetGlobalRegistrationDownsampleValue()
 {
 	return this->m_GlobalRegDownsampleValue;
 }
+
+virtual void CalculateInitialMovingImageRegionList() = 0;
+
+virtual void CalculateInitialFixedImageRegionList() = 0;
+
+/** a function to execute the analysis. */
+void ExecuteDIC()
+{	
+	std::stringstream msg("");
+	
+	if (!this->IsReadyForRegistration() ) std::abort();
+		
+	if( this->m_FixedImageRegionList.empty() ){ // if the region list is empty, create full region lists
+		this->CalculateInitialFixedImageRegionList();
+	}
+	if( this->m_MovingImageRegionList.empty() ){
+		this->CalculateInitialMovingImageRegionList();
+	}
+		
+	struct tm * timeValue; // record the time
+	std::time_t rawTime;
+	std::time( &rawTime );
+	timeValue = std::localtime( &rawTime );
+	msg.str("");
+	msg << "Starting DIC at: "<<std::asctime( timeValue )<<std::endl;
+	this->WriteToLogfile( msg.str() );
+	
+	// visit every region in the region list
+	unsigned int nPoints = this->GetFixedImageRegionList()->size();
+	for( unsigned int i = 0; i<nPoints; ++i){
+		unsigned int pointId = this->GetPointId( i );
+		
+		msg.str("");
+		msg << "Starting image registraion for point: "<<i+1<<" of "<<nPoints<<" (mesh index "<<pointId<<")"<<std::endl;
+		this->WriteToLogfile( msg.str() );
+		
+		std::time_t rawTime; // record the time for each DVC
+		struct tm * timeValue;
+		std::time( &rawTime );
+		timeValue = std::localtime( &rawTime );
+		msg.str("");
+		msg << "Time: "<<std::asctime( timeValue );
+		this->WriteToLogfile( msg.str() );
+		
+		FixedImageRegionType	*fixedRegion = new FixedImageRegionType ; // get the fixed image from the fixed image list
+		FixedImagePointer		fixedImage;
+		fixedRegion = this->GetFixedImageRegionFromIndex( i );
+		fixedImage = this->GetFixedROIAsImage( fixedRegion );
+		this->SetFixedROIImage( fixedImage );
+		
+		MovingImageRegionType	*movingRegion = new MovingImageRegionType; // get the moving image from the moving image list
+		MovingImagePointer		movingImage;
+		movingRegion = this->GetMovingImageRegionFromIndex( i );
+		movingImage = this->GetMovingROIAsImage( movingRegion );
+		this->SetMovingROIImage( movingImage );
+		
+		this->SetTransformToIdentity(); // Set the transform to do nothing
+		
+		// initialize the transform to perform rotations about the fixed region center
+		this->GetTransformInitializer()->SetFixedImage( this->GetRegistrationMethod()->GetFixedImage() ); 
+		this->GetTransformInitializer()->SetMovingImage( this->GetRegistrationMethod()->GetMovingImage() );
+		this->GetTransformInitializer()->SetTransform( this->GetTransform() );
+		this->GetTransformInitializer()->GeometryOn();
+		this->GetTransformInitializer()->InitializeTransform();
+		this->GetRegistrationMethod()->SetInitialTransformParameters( this->m_Transform->GetParameters() );
+		
+		double	*displacementData = new double[3];  // set the initial displacement
+		this->GetPixelValueFromIndex( pointId, displacementData );
+		this->SetInitialDisplacement( displacementData );
+		
+		msg.str("");
+		msg <<"Current transform: "<<this->GetRegistrationMethod()->GetInitialTransformParameters()<<std::endl;
+		this->WriteToLogfile( msg.str() );
+		
+		// if the optimizer is the lbfgsb then set the bounds based on teh current displacement
+		if( !strcmp(this->GetRegistrationMethod()->GetOptimizer()->GetNameOfClass(),"LBFGSBOptimizer") ){
+			unsigned int nParameters = this->GetRegistrationMethod()->GetTransform()->GetNumberOfParameters();
+			itk::Array< long > boundSelect( nParameters );
+			itk::Array< double > upperBound( nParameters );
+			itk::Array< double > lowerBound( nParameters );
+			
+			boundSelect.Fill( 0 );
+			boundSelect[nParameters-3] = 2;
+			boundSelect[nParameters-2] = 2;
+			boundSelect[nParameters-1] = 2;
+			typename FixedImageType::SpacingType imageSpacing = this->GetRegistrationMethod()->GetFixedImage()->GetSpacing();
+			upperBound[nParameters-3] = *displacementData + .5*imageSpacing[0];
+			upperBound[nParameters-2] = *(displacementData+1) + .5*imageSpacing[1];
+			upperBound[nParameters-1] = *(displacementData+2) + .5*imageSpacing[2];
+			lowerBound.Fill( 0 );
+			lowerBound[nParameters-3] = *displacementData - .5*imageSpacing[0];
+			lowerBound[nParameters-2] = *(displacementData+1) - .5*imageSpacing[1];
+			lowerBound[nParameters-1] = *(displacementData+2) - .5*imageSpacing[2];
+			
+			reinterpret_cast<itk::LBFGSBOptimizer *>(this->GetRegistrationMethod()->GetOptimizer())->SetBoundSelection( boundSelect );
+			reinterpret_cast<itk::LBFGSBOptimizer *>(this->GetRegistrationMethod()->GetOptimizer())->SetUpperBound( upperBound );
+			reinterpret_cast<itk::LBFGSBOptimizer *>(this->GetRegistrationMethod()->GetOptimizer())->SetLowerBound( lowerBound );
+		}
+		
+		// update the registration
+		this->UpdateRegionRegistration();
+		
+		// output the results
+		double *lastDisp = new double[3];
+		this->GetLastDisplacement( lastDisp );
+		this->SetPixelValueFromIndex( pointId, lastDisp );
+		double *lastOpt = new double;
+		this->GetLastOptimizer( lastOpt );
+		this->SetPixelOptimizerFromIndex( pointId, lastOpt );
+		msg.str("");
+		msg << "Final displacement value: ("<<*lastDisp<<", "<<*(lastDisp+1)<<", "<<*(lastDisp+2)<<")"<<std::endl <<
+			"Optimizer stop condition: " << this->GetRegistrationMethod()->GetOptimizer()->GetStopConditionDescription() << std::endl <<
+			"Final optimizer value: "<<*lastOpt<<std::endl<<std::endl;
+		this->WriteToLogfile( msg.str() );
+		std::string debugFile = this->GetOutputDirectory() + "/debug.vtk";
+		this->WriteToOutputDataFile( debugFile );
+	}
+}
+
+virtual unsigned int GetPointId( unsigned int index ) = 0;
+
+virtual void GetPixelValueFromIndex( unsigned int index, double *pixel ) = 0;
+
+virtual void SetPixelValueFromIndex( unsigned int index, double *pixel ) = 0;
+
+virtual void SetPixelOptimizerFromIndex( unsigned int index, double *opt ) = 0;
+
+virtual void WriteToOutputDataFile( std::string outFile ) = 0;
+
+TransformInitializerTypePointer GetTransformInitializer()
+{
+	return this->m_TransformInitializer;
+}
+
+/** Get the pointer to the data image. */
+virtual bool IsReadyForRegistration() = 0;
 	
 protected:
 
@@ -846,6 +985,7 @@ TransformInitializerTypePointer		m_TransformInitializer;
 std::string							m_LogfileName;
 std::string							m_OutputDirectory;
 unsigned int						m_GlobalRegDownsampleValue;
+
 }; // end class DIC
 
 #endif // DIC_H

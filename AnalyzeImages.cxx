@@ -298,14 +298,21 @@ int main(int argc, char **argv)
 	optimizer->SetMaximumStepLength(0.010); // large steps for the global registration (based on visual alignment in ParaView)
 	optimizer->SetMinimumStepLength(0.005); // low tolerance for the global registration*/
 	if ( !restartFile ){
-		DICType::ImageRegistrationMethodType::ParametersType globalRegistrationResult = DICMethod->GlobalRegistration();
+		const DICType::ImageRegistrationMethodType::TransformOutputType* globalRegistrationResult = DICMethod->GlobalRegistration();
 		
 		msg.str("");
-		msg << "Resampling the moving image based on global registration result:"<<std::endl<<globalRegistrationResult<<std::endl;
+		msg << "Resampling the moving image based on global registration result:"<<std::endl<<globalRegistrationResult->Get()->GetParameters()<<std::endl;
 		DICMethod->WriteToLogfile( msg.str() );
 		
 		DICMethod->ResampleMovingImage( globalRegistrationResult );
 	}
+	
+	typedef itk::ImageFileWriter< MovingImageType > 		ImageFileWriterType;
+	ImageFileWriterType::Pointer	writer = ImageFileWriterType::New();
+	std::string resampledMovingFileName = this->GetOutputDirectory() + "/ResampledMovingImage.mha";
+	writer->SetFileName(resampledMovingFileName);
+	writer->SetInput(DICMethod->GetMovingImage() );
+	writer->Update();
 	
 	typedef itk::BSplineInterpolateImageFunction<FixedImageType, double, double>  BSplineInterpolatorType;
 	BSplineInterpolatorType::Pointer	bSplineInterpolator = BSplineInterpolatorType::New();
@@ -344,7 +351,7 @@ int main(int argc, char **argv)
 	msg.str("");
 	msg <<"Writing file to "<<debugFile<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
-	DICMethod->WriteMeshToVTKFile( debugFile );
+	DICMethod->WriteToOutputDataFile( debugFile );
 	
 	msg.str("");
 	msg << "Removing bad pixels and smoothing the image." <<std::endl;
@@ -358,11 +365,11 @@ int main(int argc, char **argv)
 	DICMethod->WriteToLogfile( msg.str() );
 	
 	debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC_BadReplaced.vtk";
-	DICMethod->WriteMeshToVTKFile( debugFile );
+	DICMethod->WriteToOutputDataFile( debugFile );
 	
 	DICMethod->DisplacementWeightedMovingAverageFilter( .1, 0 );
 	debugFile = DICMethod->GetOutputDirectory() + "/AfterInitialDVC_BadReplaced_Smoothed.vtk";
-	DICMethod->WriteMeshToVTKFile( debugFile );	
+	DICMethod->WriteToOutputDataFile( debugFile );	
 		
 	DICMethod->CalculateInitialFixedImageRegionList();
 	DICMethod->CalculateInitialMovingImageRegionList();
@@ -405,7 +412,7 @@ int main(int argc, char **argv)
 	DICMethod->WriteToLogfile( msg.str() );
 	
 	std::string outputFile = outputDir + "/DVC_After_Second_Round.vtk";
-	DICMethod->WriteMeshToVTKFile( outputFile );
+	DICMethod->WriteToOutputDataFile( outputFile );
 	
 	msg.str("");
 	msg<<"Checking for bad pixels and re-analyzing"<<std::endl;
@@ -441,7 +448,7 @@ int main(int argc, char **argv)
 	msg << "Writing output file"<<std::endl;
 	DICMethod->WriteToLogfile( msg.str() );
 	outputFile = outputDir + "/Final_DIC_Result.vtk";
-	DICMethod->WriteMeshToVTKFile( outputFile );
+	DICMethod->WriteToOutputDataFile( outputFile );
 	
 	msg.str("");
 	msg << "Smoothing strain tensor and recalculating the principal strains."<<std::endl;
@@ -455,7 +462,7 @@ int main(int argc, char **argv)
 	DICMethod->StrainWeightedMovingAverageFilter( 2, 0);
 	DICMethod->GetPrincipalStrains();
 	outputFile = DICMethod->GetOutputDirectory() + "/Final_DIC_Smoothed_Result.vtk";
-	DICMethod->WriteMeshToVTKFile( outputFile );	
+	DICMethod->WriteToOutputDataFile( outputFile );	
 	
 	std::time( &rawTime );
 	timeValue = std::localtime( &rawTime );

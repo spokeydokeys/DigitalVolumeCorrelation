@@ -286,7 +286,7 @@ int main(int argc, char** argv)
 	DICMethod->GetStrains();
 	std::cout<<"After Get Strains"<<std::endl;
 	std::string outFile = "/home/seth/Desktop/afterGetStrains.vtk";
-	DICMethod->WriteMeshToVTKFile( outFile );
+	DICMethod->WriteToOutputDataFile( outFile );
 	//~ DICMethod->StrainWeightedMovingAverageFilter( atof(argv[5]), 0);
 	//DICMethod->StrainWeightedMovingAverageFilter(0, atof(argv[5]), 0);	
 	//DICMethod->ReplaceBadStrainPixels(0, atof(argv[5]), 0);
@@ -294,7 +294,7 @@ int main(int argc, char** argv)
 	DICMethod->GetPrincipalStrains();	
 	
 	outFile = outputDir;// + "/result2.vtk";	
-	DICMethod->WriteMeshToVTKFile( outFile );	
+	DICMethod->WriteToOutputDataFile( outFile );	
 	
 	//~ DICMethod->CreateNewRegionListFromBadPixels();
 	//DICMethod->ExecuteDIC();
