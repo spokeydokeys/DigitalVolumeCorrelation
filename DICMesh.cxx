@@ -23,8 +23,8 @@
 #include <cstring>
 #include <ctime>
 #include "DIC.cxx"
-#include "itkMesh.h"
-#include "itkTetrahedronCell.h"
+//~ #include "itkMesh.h"
+//~ #include "itkTetrahedronCell.h"
 #include <vtkDoubleArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkPoints.h>
@@ -38,11 +38,11 @@
 #include <vtkCellDerivatives.h>
 #include <vtkCellDataToPointData.h>
 #include <vtkMath.h>
-#include <vtkImageGaussianSmooth.h>
+//~ #include <vtkImageGaussianSmooth.h>
 #include <vtkImageData.h>
 
-#include <itkImageFileWriter.h>
-#include <itkShrinkImageFilter.h>
+//~ #include <itkImageFileWriter.h>
+//~ #include <itkShrinkImageFilter.h>
 
 template<typename TFixedImage, typename TMovingImage>
 class DICMesh : public DIC<TFixedImage, TMovingImage>

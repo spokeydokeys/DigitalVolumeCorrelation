@@ -309,7 +309,7 @@ int main(int argc, char **argv)
 	
 	typedef itk::ImageFileWriter< MovingImageType > 		ImageFileWriterType;
 	ImageFileWriterType::Pointer	writer = ImageFileWriterType::New();
-	std::string resampledMovingFileName = this->GetOutputDirectory() + "/ResampledMovingImage.mha";
+	std::string resampledMovingFileName = DICMethod->GetOutputDirectory() + "/ResampledMovingImage.mha";
 	writer->SetFileName(resampledMovingFileName);
 	writer->SetInput(DICMethod->GetMovingImage() );
 	writer->Update();
