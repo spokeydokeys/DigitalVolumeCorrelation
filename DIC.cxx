@@ -688,12 +688,12 @@ const typename ImageRegistrationMethodType::TransformOutputType* GlobalRegistrat
 	
 	typename FixedResamplerType::Pointer	fixedResampler = FixedResamplerType::New();
 	typename MovingResamplerType::Pointer	movingResampler = MovingResamplerType::New();		
-	fixedResampler->SetInput( this->m_FixedImage );
-	movingResampler->SetInput( this->m_MovingImage );
-	fixedResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
-	movingResampler->SetShrinkFactors( this->m_GlobalRegDownsampleValue );
-	fixedResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
-	movingResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
+	fixedResampler->SetInput( this->GetFixedImage() );
+	movingResampler->SetInput( this->GetMovingImage() );
+	fixedResampler->SetShrinkFactors( this->GetGlobalRegistrationDownsampleValue() );
+	movingResampler->SetShrinkFactors( this->GetGlobalRegistrationDownsampleValue() );
+	fixedResampler->SetNumberOfThreads( this->GetRegistrationMethod()->GetNumberOfThreads() );
+	movingResampler->SetNumberOfThreads( this->GetRegistrationMethod()->GetNumberOfThreads() );
 	std::stringstream msg("");
 	msg <<"Resampling for global registration"<<std::endl<<std::endl;
 	this->WriteToLogfile(msg.str());
@@ -701,45 +701,45 @@ const typename ImageRegistrationMethodType::TransformOutputType* GlobalRegistrat
 	movingResampler->Update();
 	
 	// global registration - rotation is centred on the body
-	this->m_Registration->SetFixedImage( fixedResampler->GetOutput() );
-	this->m_Registration->SetMovingImage( movingResampler->GetOutput() );
-	this->m_TransformInitializer->SetFixedImage( fixedResampler->GetOutput() );
-	this->m_TransformInitializer->SetMovingImage( movingResampler->GetOutput() );
-	this->m_TransformInitializer->SetTransform( this->m_Transform );
-	this->m_TransformInitializer->GeometryOn();
-	this->m_TransformInitializer->InitializeTransform();
-	this->m_Registration->SetInitialTransformParameters( this->m_Transform->GetParameters() );
+	this->GetRegistrationMethod()->SetFixedImage( fixedResampler->GetOutput() );
+	this->GetRegistrationMethod()->SetMovingImage( movingResampler->GetOutput() );
+	this->GetTransformInitializer()->SetFixedImage( fixedResampler->GetOutput() );
+	this->GetTransformInitializer()->SetMovingImage( movingResampler->GetOutput() );
+	this->GetTransformInitializer()->SetTransform( this->GetTransform() );
+	this->GetTransformInitializer()->GeometryOn();
+	this->GetTransformInitializer()->InitializeTransform();
+	this->GetRegistrationMethod()->SetInitialTransformParameters( this->GetTransform()->GetParameters() );
 	
 	// get the global registration region.
 	FixedImageRegionType registrationRegion = this->GetGlobalRegistrationRegion();
 	typename FixedImageRegionType::SizeType registrationSize = registrationRegion.GetSize();
 	typename FixedImageRegionType::IndexType registrationIndex = registrationRegion.GetIndex();
-	registrationSize[0] = (int) floor( registrationSize[0]/this->m_GlobalRegDownsampleValue ); // Since GetGlobalRegistrationRegion returns the region in terms of m_FixedImge, the return values will have to be modifed to take into account the ShrinkImageFilter changes.
-	registrationSize[1] = (int) floor( registrationSize[1]/this->m_GlobalRegDownsampleValue );
-	registrationSize[2] = (int) floor( registrationSize[2]/this->m_GlobalRegDownsampleValue );
-	registrationIndex[0] = (int) floor( registrationIndex[0]/this->m_GlobalRegDownsampleValue );
-	registrationIndex[1] = (int) floor( registrationIndex[1]/this->m_GlobalRegDownsampleValue );
-	registrationIndex[2] = (int) floor( registrationIndex[2]/this->m_GlobalRegDownsampleValue );
+	registrationSize[0] = (int) floor( registrationSize[0]/this->GetGlobalRegistrationDownsampleValue() ); // Since GetGlobalRegistrationRegion returns the region in terms of m_FixedImge, the return values will have to be modifed to take into account the ShrinkImageFilter changes.
+	registrationSize[1] = (int) floor( registrationSize[1]/this->GetGlobalRegistrationDownsampleValue() );
+	registrationSize[2] = (int) floor( registrationSize[2]/this->GetGlobalRegistrationDownsampleValue() );
+	registrationIndex[0] = (int) floor( registrationIndex[0]/this->GetGlobalRegistrationDownsampleValue() );
+	registrationIndex[1] = (int) floor( registrationIndex[1]/this->GetGlobalRegistrationDownsampleValue() );
+	registrationIndex[2] = (int) floor( registrationIndex[2]/this->GetGlobalRegistrationDownsampleValue() );
 	registrationRegion.SetSize( registrationSize );
 	registrationRegion.SetIndex( registrationIndex );
 	
 	// set the limited analysis region
-	this->m_Registration->SetFixedImageRegion( registrationRegion ); 
-	this->m_Registration->SetFixedImageRegionDefined( true );
+	this->GetRegistrationMethod()->SetFixedImageRegion( registrationRegion ); 
+	this->GetRegistrationMethod()->SetFixedImageRegionDefined( true );
 	
 	msg.str("");
 	msg << "Global registration in progress"<<std::endl<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	
-	this->m_Registration->Update();
-	this->m_Registration->SetFixedImageRegionDefined( false );
+	this->GetRegistrationMethod()->Update();
+	this->GetRegistrationMethod()->SetFixedImageRegionDefined( false );
 	
 	msg.str("");
 	msg << "Global Registration complete."<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	
 	double globalRegResults[3];// = new double[3];
-	RegistrationParametersType	finalParameters = this->m_Registration->GetLastTransformParameters();
+	RegistrationParametersType	finalParameters = this->GetRegistrationMethod()->GetLastTransformParameters();
 	msg.str("");
 	msg << "Final Params:"<< finalParameters<<std::endl;
 	this->WriteToLogfile( msg.str() );
@@ -752,7 +752,7 @@ const typename ImageRegistrationMethodType::TransformOutputType* GlobalRegistrat
 		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	
-	return this->m_Registration->GetOutput();
+	return this->GetRegistrationMethod()->GetOutput();
 }
 
 /** This method will resample the moving image based on the parameters

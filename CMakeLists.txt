@@ -21,9 +21,11 @@ ENDIF(VTK_FOUND)
 
 ADD_LIBRARY( DIC DIC.cxx )
 ADD_LIBRARY( DICMesh DICMesh.cxx )
+ADD_LIBRARY( DICGrid DICGrid.cxx )
 ADD_EXECUTABLE( AnalyzeImages AnalyzeImages.cxx)
 ADD_EXECUTABLE( TestAlgorithm TestAlgorithm.cxx)
 
-TARGET_LINK_LIBRARIES( AnalyzeImages DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
-TARGET_LINK_LIBRARIES( TestAlgorithm DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
+
+TARGET_LINK_LIBRARIES( AnalyzeImages DIC DICMesh DICGrid ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
+TARGET_LINK_LIBRARIES( TestAlgorithm DIC DICMesh DICGrid ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
 

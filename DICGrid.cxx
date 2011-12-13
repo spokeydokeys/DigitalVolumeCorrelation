@@ -23,7 +23,7 @@
 #include <cstring>
 #include <ctime>
 #include <vtkDoubleArray.h>
-#include <vtkStructuredGrid.h>
+#include <vtkImageData.h>
 #include <vtkPoints.h>
 #include <vtkCellArray.h>
 #include <vtkStructuredGridWriter.h>
@@ -41,11 +41,12 @@
 #include <itkBinaryImageToShapeLabelMapFilter.h>
 #include <itkShapeLabelObject.h>
 #include <itkLabelMap.h>
+#include "DIC.cxx"
 
 
 
 template<typename TFixedImage, typename TMovingImage, typename TMaskImage>
-class DICMesh : public DIC<TFixedImage, TMovingImage>
+class DICGrid : public DIC<TFixedImage, TMovingImage>
 {
 public: 
 /** Inherited typedefs from DIC.*/
@@ -68,7 +69,7 @@ typedef			 TMaskImage							MaskImageType;
 typedef	typename MaskImageType::Pointer				MaskImagePointer;
 typedef	typename MaskImageType::ConstPointer		MaskImageConstPointer;
 
-typedef		vtkSmartPointer<vtkStructuredGrid>		DataImagePointer;
+typedef		vtkSmartPointer<vtkImageData>			DataImagePointer;
 typedef		vtkSmartPointer<vtkPoints>				DataImagePointsPointer;
 typedef		vtkSmartPointer<vtkDoubleArray>			DataImagePixelPointer;
 
@@ -87,7 +88,6 @@ typedef typename LabelMapType::Pointer												LabelMapPointer;
 DICGrid()
 {
 	m_DataImage = 0; // must be provided by user or read in using the ReadMeshFromGmshFile method
-	m_KDTree = vtkSmartPointer<vtkPKdTree>::New();
 	m_errorRadius = 4; // initialize the error search radius to 3 image units
 	m_displacementErrorTolerance = 2; // difference of a pixel from its neighbours to be considered erronious, in standard deviations from the mean
 	m_strainErrorTolerance = 1;	
@@ -96,18 +96,25 @@ DICGrid()
 	m_maskImage = 0; // Must be provided by the user
 	m_regionOverlap = 0.5; // default region overlap
 	m_maskRatio = 0.3; // the minimum value of region/mask overlap to evaluate the region
-	m_maskLabel = 0; // to be calculated from the mask image
+	m_labelMap = 0; // to be calculated from the mask image
 }
 
 void CreateEmptyDataImage()
 {
 	// get the centre of the data image
-	LabelObjectType::CentroidType	center = this->GetMaskImageLabel()->GetCentroid;
+	typename LabelObjectType::CentroidType	center = this->GetMaskImageLabel()->GetCentroid();
+	typename LabelMapType::IndexType centerIndex;
+	this->GetLabelMap()->TransformPhysicalPointToIndex( center, centerIndex );
 	
 	// get the point spacing in the image
 	double spacing = (this->GetInterrogationRegionRadius()*2+1)*this->GetRegionOverlap();
 	
 	// get the number of points to the edge of the label mask
+	typename MaskImageType::RegionType	labelMapRegion = this->GetLabelMap()->GetRegion();
+	 
+	DataImagePointer	dataImage = DataImagePointer::New();
+	
+	
 	
 	
 	
@@ -134,7 +141,7 @@ bool SetRegionOverlap( RegionOverlapType overlap )
 		return false;
 	}
 	if (this->m_regionOverlap != overlap){
-		this->m_regionOverlap = overlap
+		this->m_regionOverlap = overlap;
 		return true;
 	}
 	else if( this->m_regionOverlap == overlap){
@@ -157,6 +164,10 @@ void CalculateInitialMovingImageRgionList()
 	//		use m_maskRatio
 	// if it does not overlap the mask use vtkStructuredGrid::BlankPoint to turn off the point
 	// it is does overlap, add the region, defined by m_IRRadius to the region list
+	// to speed things up, perform the following psudo code:
+	//  if(center of region is contained in object => store region as valid
+	//  if(!one of the corners is in object) => skip as invalid region
+	//  if(!ratio of region in image > m_maskRatio) => skip as invalid region
 }
 
 void CalculateInitialFixedImageRegionList()
@@ -166,6 +177,10 @@ void CalculateInitialFixedImageRegionList()
 	//		use m_maskRatio
 	// if it does not overlap the mask use vtkStructuredGrid::BlankPoint to turn off the point
 	// it is does overlap, add the region, defined by m_IRRadius to the region list
+	// to speed things up, perform the following psudo code:
+	//  if(center of region is contained in object => store region as valid
+	//  if(!one of the corners is in object) => skip as invalid region
+	//  if(!ratio of region in image > m_maskRatio) => skip as invalid region
 }
 
 FixedImageRegionType GetGlobalRegistrationRegion()
@@ -175,7 +190,7 @@ FixedImageRegionType GetGlobalRegistrationRegion()
 
 void SetMaskRatio(double ratio)
 {
-	if( ration != m_maskRatio ){
+	if( ratio != m_maskRatio ){
 		this->m_maskRatio = ratio;
 	}
 }
@@ -184,7 +199,7 @@ void SetMaskRatio(double ratio)
 void ReadMaskImage( std::string maskFileName )
 {
 	typedef itk::ImageFileReader< MaskImageType >					MaskImageReaderType;
-	MaskImageReaderType::Pointer	maskreader = MaskImageReaderType::New();
+	typename MaskImageReaderType::Pointer	maskreader = MaskImageReaderType::New();
 	
 	maskreader->SetFileName( maskFileName );
 
@@ -213,7 +228,7 @@ LabelMapPointer GetLabelMap()
 void CalculateMaskImageLabel()
 {
 	typedef itk::BinaryImageToShapeLabelMapFilter< MaskImageType >	BinaryImageToShapeLabelMapFilterType;
-	BinaryImageToShapeLabelMapFilterType::Pointer binaryToLabelFilter = BinaryImageToShapeLabelMapFilterType::New();
+	typename BinaryImageToShapeLabelMapFilterType::Pointer binaryToLabelFilter = BinaryImageToShapeLabelMapFilterType::New();
 	binaryToLabelFilter->SetInput( this->GetMaskImage() );
 	try{
 		binaryToLabelFilter->Update();
@@ -299,7 +314,7 @@ LabelMapPointer				m_labelMap;
 
 
 
-}
+};
 
 #endif
 
