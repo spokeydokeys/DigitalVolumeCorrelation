@@ -69,6 +69,7 @@ typedef			 TMaskImage							MaskImageType;
 typedef	typename MaskImageType::Pointer				MaskImagePointer;
 typedef	typename MaskImageType::ConstPointer		MaskImageConstPointer;
 
+typedef		vtkImageData							DataImageType;
 typedef		vtkSmartPointer<vtkImageData>			DataImagePointer;
 typedef		vtkSmartPointer<vtkPoints>				DataImagePointsPointer;
 typedef		vtkSmartPointer<vtkDoubleArray>			DataImagePixelPointer;
@@ -101,31 +102,34 @@ DICGrid()
 
 void CreateEmptyDataImage()
 {
-	// get the centre of the data image
-	typename LabelObjectType::CentroidType	center = this->GetMaskImageLabel()->GetCentroid();
-	typename LabelMapType::IndexType centerIndex;
-	this->GetLabelMap()->TransformPhysicalPointToIndex( center, centerIndex );
+	// get the number of output points to the edge of the label mask
+	double spacingInputVoxel = (this->GetInterrogationRegionRadius()*2+1)*this->GetRegionOverlap(); // the output image point spacing in input image voxels
+	typename MaskImageType::RegionType::SizeType labelMapSize = this->GetLabelMap()->GetRegion()->GetSize();
+	int extent[6] = {0};
+	extent[1] = std::ceil(labelMapSize[0]/spacingInputVoxel);
+	extent[3] = std::ceil(labelMapSize[1]/spacingInputVoxel);
+	extent[5] = std::ceil(labelMapSize[2]/spacingInputVoxel);
 	
-	// get the point spacing in the image
-	double spacing = (this->GetInterrogationRegionRadius()*2+1)*this->GetRegionOverlap();
+	// get the spacing of the data image
+	typename LabelMapType::SpacingType	inSpacing = this->GetLabelMap()->GetSpacing(); // physical spacing of input image
+	double outSpacing[3] = { 0 };
+	outSpacing[0] = spacingInputVoxel*inSpacing[0]; // physical spacing of output image
+	outSpacing[1] = spacingInputVoxel*inSpacing[1];
+	outSpacing[2] = spacingInputVoxel*inSpacing[2];
 	
-	// get the number of points to the edge of the label mask
-	typename MaskImageType::RegionType	labelMapRegion = this->GetLabelMap()->GetRegion();
-	 
+	// get the origin of the data image
+	typename LabelObjectType::CentroidType	inCenter = this->GetMaskImageLabel()->GetCentroid(); // physical centre of the label object
+	double outOrigin[3] = { 0 };
+	outOrigin[0] = inCenter[0] - ( (double)extent[1]-(double)extent[0] )/2 * outSpacing[0]; // origin defined by matched centers and extent.
+	outOrigin[1] = inCenter[1] - ( (double)extent[3]-(double)extent[2] )/2 * outSpacing[1];
+	outOrigin[2] = inCenter[2] - ( (double)extent[5]-(double)extent[4] )/2 * outSpacing[2];
+	
 	DataImagePointer	dataImage = DataImagePointer::New();
+	dataImage->SetExtent( extent );
+	dataImage->SetSpacing( outSpacing );
+	dataImage->SetOrigin( outOrigin );
 	
-	
-	
-	
-	
-	
-	// Find the middle of the image.
-	// use itkImageMomentsCalculator to calculate the mask center
-	// example in: /media/data/ITK-Source/InsightToolkit-3.20.0/Code/Common/itkCenteredTransformInitializer.txx
-	
-	// Find the number of Regions in each direction in the image
-	//		use m_regionOverlap and m_IRRadius to define an image spacing.
-	// create vtkStructuredGrid to with the correct size, spacing and origin
+	// create the holders for the point and cell data
 }
 
 /** Set the region overlap. For practicality, the region overlap is limited
