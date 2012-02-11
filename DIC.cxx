@@ -35,7 +35,7 @@
 #include "itkNormalizeImageFilter.h"
 #include "itkRegularStepGradientDescentOptimizer.h"
 #include "itkTranslationTransform.h"
-#include "itkLinearInterpolateImageFunction.h"
+
 #include "itkCenteredEuler3DTransform.h"
 #include <itkCenteredTransformInitializer.h>
 
@@ -104,9 +104,6 @@ typedef typename	OptimizerType::Pointer										OptimizerTypePointer;
 typedef itk::CenteredAffineTransform< double, 3 >								TransformType;
 typedef	typename	TransformType::Pointer										TransformTypePointer;
 
-typedef itk::LinearInterpolateImageFunction< MovingImageType, double >			InterpolatorType;
-typedef typename	InterpolatorType::Pointer									InterpolatorTypePointer;
-
 typedef itk::CenteredTransformInitializer<TransformType,FixedImageType,MovingImageType>	TransformInitializerType;
 typedef typename	TransformInitializerType::Pointer							TransformInitializerTypePointer;
 
@@ -136,12 +133,9 @@ DIC()
 	// Setup the registration optimizer
 	m_Optimizer				= OptimizerType::New();
 	m_Optimizer->SetNumberOfIterations( 200 );
-	// Setup the registration interpolator
-	m_Interpolator			= InterpolatorType::New();
-	// Setup the registration
+	// Setup the registration // note that there is no default interpolator.  That is set by a the user. */
 	m_Registration			= ImageRegistrationMethodType::New();
 	m_Registration->SetTransform( m_Transform );
-	m_Registration->SetInterpolator( m_Interpolator );
 	m_Registration->SetOptimizer( m_Optimizer );
 	m_Registration->SetMetric( m_Metric );
 	m_TransformInitializer	= TransformInitializerType::New();
@@ -218,7 +212,7 @@ FixedImageRegionType* GetFixedImageRegionFromIndex( unsigned int regionNumber)
 	if (this->m_FixedImageRegionList.empty())
 	{
 		std::stringstream msg("");
-		msg << "The fixed region list is currently empty."<<std::endl;
+		msg << "The fixed region list is currently empty.";
 		this->WriteToLogfile( msg.str() );
 		std::abort();
 	}
@@ -274,7 +268,7 @@ MovingImageRegionType* GetMovingImageRegionFromIndex( unsigned int regionNumber 
 	if (this->m_MovingImageRegionList.empty())
 	{
 		std::stringstream msg("");
-		msg << "The moving region list is currently empty."<<std::endl;
+		msg << "The moving region list is currently empty.";
 		this->WriteToLogfile( msg.str() );
 		std::abort();
 	}
@@ -364,7 +358,7 @@ void FixImageRegion( MovingImageRegionType *region, MovingImageConstPointer imag
 		{
 			// give a warning
 			std::stringstream msg("");
-			msg<<"Warning: The moving image region starts after the end of the moving image.  Using closest valid region."<<std::endl<<"Index: ["<<regionIndex[0]<<", "<<regionIndex[1]<<", "<<regionIndex[2]<<"]"<<std::endl<<"Size: ["<<regionSize[0]<<", "<<regionSize[1]<<", "<<regionSize[2]<<"]"<<std::endl;
+			msg<<"Warning: The moving image region starts after the end of the moving image.  Using closest valid region."<<std::endl<<"Index: ["<<regionIndex[0]<<", "<<regionIndex[1]<<", "<<regionIndex[2]<<"]"<<std::endl<<"Size: ["<<regionSize[0]<<", "<<regionSize[1]<<", "<<regionSize[2]<<"]";
 			this->WriteToLogfile( msg.str() );
 			
 			// use the closest part of the image, but at least the IRRadius
@@ -406,7 +400,7 @@ FixedImagePointer GetFixedROIAsImage( FixedImageRegionType *desiredRegion )
 	{
 		std::stringstream msg("");
 		msg <<"Exception caught updating GetFixedROIAsImage method" << std::endl << "Exception message" << 
-			std::endl << err << std::endl << std::endl;
+			std::endl << err<< std::endl;
 		this->WriteToLogfile( msg.str() );		
 		std::abort();
 	}
@@ -427,7 +421,7 @@ MovingImagePointer GetMovingROIAsImage( MovingImageRegionType *desiredRegion )
 	{
 		std::stringstream msg("");
 		msg << "Exception caught updating GetMovingROIAsImage method" << std::endl << "Exception message" <<
-			std::endl<<err<<std::endl<<std::endl;
+			std::endl<<err<<std::endl;
 		this->WriteToLogfile( msg.str() );
 		std::abort();
 	}
@@ -462,7 +456,7 @@ void UpdateRegionRegistration()
 	try
 	{
 		std::stringstream msg("");
-		msg << "Updating Registration!"<<std::endl;
+		msg << "Updating Registration!";
 		this->WriteToLogfile( msg.str() );
 		this->m_Registration->Update();
 	}
@@ -470,25 +464,25 @@ void UpdateRegionRegistration()
 	{
 		std::stringstream msg("");
 		msg <<"Exception caught updating GetRegionRegistration method"<<std::endl<<"Exception message"<<
-			std::endl<<err<<std::endl<<std::endl;
+			std::endl<<err<<std::endl;
 		this->WriteToLogfile( msg.str() );
 				
 		typename DIC<FixedImageType,MovingImageType>::ImageRegistrationMethodType::OptimizerType::Pointer optimizer;
 		optimizer = this->m_Registration->GetOptimizer();
 		msg.str(" ");
-		msg << optimizer<<std::endl;
+		msg << optimizer;
 		this->WriteToLogfile( msg.str() );
 		
 		typename DIC<FixedImageType,MovingImageType>::ImageRegistrationMethodType::FixedImageType::ConstPointer	fixedImage;
 		fixedImage = this->m_Registration->GetFixedImage();
 		msg.str(" ");
-		msg << fixedImage << std::endl;
+		msg << fixedImage;
 		this->WriteToLogfile( msg.str() );	
 				
 		typename DIC<FixedImageType,MovingImageType>::ImageRegistrationMethodType::MovingImageType::ConstPointer	movingImage;
 		movingImage = this->m_Registration->GetMovingImage();
 		msg.str(" ");
-		msg << movingImage << std::endl;
+		msg << movingImage;
 		this->WriteToLogfile( msg.str() );
 	}
 }
@@ -602,17 +596,19 @@ std::string GetLogfileName()
 }
 
 /** A function to write string data to a log file. */
-void WriteToLogfile( std::string characters)
+void WriteToLogfile( std::string characters )
 {
 	std::ofstream outFile;
 	outFile.open(this->m_LogfileName.c_str(), std::ofstream::app);
 	if(!outFile.is_open())
 	{
 		std::cerr<<"Logfile error!  Cannot open file."<<std::endl;
+		std::cerr<<"To be logged:"<<std::endl;
+		std::cerr<<characters<<std::endl;
 		std::abort();
 	}
-	std::cout<< characters;
-	outFile << characters;
+	std::cout<< characters << std::endl;
+	outFile << characters << std::endl;
 
 	outFile.close();
 
@@ -682,7 +678,6 @@ ImageRegistrationMethodPointer		m_Registration;
 MetricTypePointer					m_Metric;
 OptimizerTypePointer				m_Optimizer;
 TransformTypePointer				m_Transform;
-InterpolatorTypePointer				m_Interpolator;
 TransformInitializerTypePointer		m_TransformInitializer;
 
 std::string							m_LogfileName;

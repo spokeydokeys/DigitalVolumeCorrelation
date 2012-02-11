@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 
-project( AnalyzeImages)
+project( AnalyzeImages )
 
 FIND_PACKAGE(ITK)
 FIND_PACKAGE(VTK)
@@ -21,9 +21,11 @@ ENDIF(VTK_FOUND)
 
 ADD_LIBRARY( DIC DIC.cxx )
 ADD_LIBRARY( DICMesh DICMesh.cxx )
+ADD_LIBRARY( AnalyzeDVC AnalyzeDVC.cxx )
 ADD_EXECUTABLE( AnalyzeImages AnalyzeImages.cxx)
-ADD_EXECUTABLE( TestAlgorithm TestAlgorithm.cxx)
+#ADD_EXECUTABLE( TestAlgorithm TestAlgorithm.cxx)
 
-TARGET_LINK_LIBRARIES( AnalyzeImages DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
-TARGET_LINK_LIBRARIES( TestAlgorithm DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
+TARGET_LINK_LIBRARIES( AnalyzeImages AnalyzeDVC DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
+#TARGET_LINK_LIBRARIES( AnalyzeImages DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
+#TARGET_LINK_LIBRARIES( TestAlgorithm DIC DICMesh ITKCommon ITKIO ITKAlgorithms ITKBasicFilters ITKNumerics ITKSpatialObject vtkHybrid )
 

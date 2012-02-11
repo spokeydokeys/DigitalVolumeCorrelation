@@ -43,6 +43,7 @@
 
 #include <itkImageFileWriter.h>
 #include <itkShrinkImageFilter.h>
+#include "vtkUnstructuredGridReader.h"
 
 template<typename TFixedImage, typename TMovingImage>
 class DICMesh : public DIC<TFixedImage, TMovingImage>
@@ -62,7 +63,7 @@ typedef typename DIC<TFixedImage,TMovingImage>::FixedImageRegionListType	FixedIm
 typedef	typename DIC<TFixedImage,TMovingImage>::MovingImageRegionListType	MovingImageRegionListType;
 
 typedef typename DIC<TFixedImage,TMovingImage>::ImageRegistrationMethodType	ImageRegistrationType;
-typedef typename ImageRegistrationType::ParametersType							RegistrationParametersType;	
+typedef typename ImageRegistrationType::ParametersType						RegistrationParametersType;	
 typedef typename DIC<TFixedImage,TMovingImage>::TransformInitializerType	TransformInitializerType;
 typedef typename DIC<TFixedImage,TMovingImage>::TransformType				TransformType;
 
@@ -149,7 +150,7 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 	if (!gmshFileInput){
 		msg.str(" ");
 		msg << "Cannot open Gmsh file for reading."<<std::endl <<
-			"Please check the filename and try again."<<std::endl;
+			"Please check the filename and try again.";
 		this->WriteToLogfile( msg.str() );
 		std::exit(1);
 	}
@@ -291,7 +292,7 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 		if (elTyp != 4 && elTyp != 11){ // only support the above element types
 			std::stringstream msg("");
 			msg << "Unsupported element types detected!"<<std::endl << "Unsupported type = "<<elTyp<<std::endl <<
-				"Continuing with the file input."<<std::endl;
+				"Continuing with the file input.";
 			this->WriteToLogfile( msg.str() );
 			gmshFileInput.ignore(255,'\n');
 			continue;
@@ -306,8 +307,17 @@ void ReadMeshFromGmshFile( std::string gmshFileName )
 	this->SetDataImage( meshImage );
 }
 
+/** A fucntion to read a vtk mesh file **/
+void ReadVTKMesh(std::string meshFileName )
+{
+		vtkSmartPointer<vtkUnstructuredGridReader>		vtkReader= vtkSmartPointer<vtkUnstructuredGridReader>::New();
+		vtkReader->SetFileName( meshFileName.c_str() );
+		vtkReader->Update();
+		this->SetDataImage( vtkReader->GetOutput() );
+}
+
 /** A function to fill a mesh with an single value. */
-void SetMeshInitialValue( double initialData[] )
+void SetMeshToSingleValue( double initialData[] )
 {
 	for ( unsigned int i = 0; i < this->m_DataImage->GetNumberOfPoints(); ++i ){
 		this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i , initialData );
@@ -366,26 +376,26 @@ void ExecuteDIC()
 	std::stringstream msg(""); // test if everything is set
 	if( !this->m_Registration ){
 		msg.str("");
-		msg << "Registration not set.  Please define and set the\nregistration using the SetRegistrationMethod() method.\n";
+		msg << "Registration not set.  Please define and set the\nregistration using the SetRegistrationMethod() method.";
 		this->WriteToLogfile( msg.str() );
 		std::abort();
 	}
 	if( !this->m_FixedImage ){
 		msg.str("");
-		msg << "Fixed image not set.  Please define and set the\n fixed image using the SetFixedImage() method.\n";
+		msg << "Fixed image not set.  Please define and set the\n fixed image using the SetFixedImage() method.";
 		this->WriteToLogfile( msg.str() );
 		std::abort();
 	}
 	if( !this->m_MovingImage ){
 		msg.str("");
-		msg << "Moving image not set.  Please define and set the\n moving image using the SetMovingImage() method.\n";
+		msg << "Moving image not set.  Please define and set the\n moving image using the SetMovingImage() method.";
 		this->WriteToLogfile( msg.str() );
 		std::abort();		
 	}
 	
 	if( !this->m_DataImage ){
 		msg.str("");
-		msg << "The data image not set.  Please define and set the\n initial data image using either the ReadMeshFromGmshFile or\n SetDataImage() methods.\n";
+		msg << "The data image not set.  Please define and set the\n initial data image using either the ReadMeshFromGmshFile or\n SetDataImage() methods.";
 		this->WriteToLogfile( msg.str() );
 		std::abort();		
 	}
@@ -402,7 +412,7 @@ void ExecuteDIC()
 	std::time( &rawTime );
 	timeValue = std::localtime( &rawTime );
 	msg.str("");
-	msg << "Starting DIC at: "<<std::asctime( timeValue )<<std::endl;
+	msg << "Starting DIC at: "<<std::asctime( timeValue );
 	this->WriteToLogfile( msg.str() );
 	
 	// visit every point in the points list
@@ -411,7 +421,7 @@ void ExecuteDIC()
 		vtkIdType pointId = this->m_pointsList->GetId( i );
 		
 		msg.str("");
-		msg << "Starting image registraion for point: "<<i+1<<" of "<<nMeshPoints<<" (mesh index "<<pointId<<")"<<std::endl;
+		msg << "Starting image registraion for point: "<<i+1<<" of "<<nMeshPoints<<" (mesh index "<<pointId<<")";
 		this->WriteToLogfile( msg.str() );
 		
 		std::time_t rawTime; // record the time for each DVC
@@ -449,7 +459,7 @@ void ExecuteDIC()
 		this->SetInitialDisplacement( displacementData );
 		
 		msg.str("");
-		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters()<<std::endl;
+		msg <<"Current transform: "<<this->m_Registration->GetInitialTransformParameters();
 		this->WriteToLogfile( msg.str() );
 		
 		// if the optimizer is the lbfgsb then set the bounds based on teh current displacement
@@ -490,7 +500,7 @@ void ExecuteDIC()
 		msg.str("");
 		msg << "Final displacement value: ("<<*lastDisp<<", "<<*(lastDisp+1)<<", "<<*(lastDisp+2)<<")"<<std::endl <<
 			"Optimizer stop condition: " << this->m_Registration->GetOptimizer()->GetStopConditionDescription() << std::endl <<
-			"Final optimizer value: "<<*lastOpt<<std::endl<<std::endl;
+			"Final optimizer value: "<<*lastOpt<<std::endl;
 		this->WriteToLogfile( msg.str() );
 		std::string debugFile = this->m_OutputDirectory + "/debug.vtk";
 		this->WriteMeshToVTKFile( debugFile );
@@ -632,8 +642,18 @@ void GetDisplacementStats(vtkIdType rPoint, vtkSmartPointer<vtkIdList> points, d
 	magStDev = std::sqrt(magDiff/denominator);
 }
 
+/** A function to find and replace bad displacement values. Displacements
+ * statistics are calculated and the displacement at a given point is
+ * tested for validity.  If the displacement is found to be outside the
+ * valid region, it is replaced by a weighted average of its neighbours.
+ * The weighting parameters are given by sigma and mean and a list of
+ * replaced pixels is returned in replacedList.
+ * see DICMesh::DisplacementWeightedMovingAverageFilter */
 void ReplaceBadDisplacementPixels( double sigma, double mean, vtkIdList *replacedList)
 {
+	// if sigma = 0, there's nothing to do
+	if ( sigma == 0) {return;}
+	
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
@@ -670,6 +690,10 @@ void ReplaceBadDisplacementPixels( double sigma, double mean, vtkIdList *replace
 	}
 }
 
+/** A function to test if a displacement vector is to be considered 
+ * erronious or not. The displacementErrorTollerance is used to tell the
+ * number of standard deviations from the mean that are permitted for
+ * each componenent.*/
 bool DisplacementValid(double value[3], double vectorAverage[3], double &magAverage, double vectorStDev[3], double &magStDev)
 {
 		if (
@@ -686,8 +710,18 @@ bool DisplacementValid(double value[3], double vectorAverage[3], double &magAver
 	
 }
 
+/** A function to find and replace bad strain values. Strain
+ * statistics are calculated and the strain at a given point is
+ * tested for validity.  If the strain is found to be outside the
+ * valid region, it is replaced by a weighted average of its neighbours.
+ * The weighting parameters are given by sigma and mean and a list of
+ * replaced pixels is returned in replacedList.
+ * see DICMesh::StrainWeightedMovingAverageFilter */
 void ReplaceBadStrainPixels( double sigma, double mean, vtkIdList *replacedList)
 {
+	// if sigma = 0, there's nothing to do
+	if ( sigma == 0) {return;}
+	
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
@@ -1123,6 +1157,9 @@ void MedianImageFilter(unsigned int N)
  * of cases need to be set to 0).*/
 void DisplacementWeightedMovingAverageFilter( double sigma, double mean )
 {
+	// if sigma = 0, there's nothing to do
+	if ( sigma == 0) {return;}
+	
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
@@ -1200,6 +1237,9 @@ double* CalculateDisplacementWeightedMovingAverage( double sigma, double mean, u
  * of 3*sigma will be used*/
 void StrainWeightedMovingAverageFilter( double sigma, double mean )
 {
+	// if sigma = 0, there's nothing to do
+	if ( sigma == 0) {return;}
+	
 	// create a duplicate of the data image
 	DataImagePointer tempImage = DataImagePointer::New();
 	tempImage->DeepCopy(this->m_DataImage);
@@ -1304,7 +1344,7 @@ void GlobalRegistration()
 	movingResampler->SetNumberOfThreads( this->m_Registration->GetNumberOfThreads() );
 	
 	std::stringstream msg(""); // note the current action in the logfile
-	msg <<"Resampling for global registration"<<std::endl<<std::endl;
+	msg <<"Resampling for global registration"<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	
 	fixedResampler->Update();
@@ -1351,28 +1391,46 @@ void GlobalRegistration()
 	this->m_Registration->SetFixedImageRegionDefined( true );
 	
 	msg.str("");
-	msg << "Global registration in progress"<<std::endl<<std::endl;
+	msg << "Global registration in progress"<<std::endl;
 	this->WriteToLogfile( msg.str() );
 	this->m_Registration->Update();
 	this->m_Registration->SetFixedImageRegionDefined( false ); // limited analysis regions will not be used in the DVC, so set to false immediately after global registration.
 	
 	msg.str("");
-	msg << "Global Registration complete."<<std::endl;
+	msg << "Global Registration complete.";
 	this->WriteToLogfile( msg.str() );
 
 	RegistrationParametersType	finalParameters = this->m_Registration->GetLastTransformParameters();
 	msg.str("");
-	msg << "Final Params:"<< finalParameters<<std::endl;
+	msg << "Final Params:"<< finalParameters;
 	this->WriteToLogfile( msg.str() );
-	double globalRegResults[3] = { 0 };	
-	this->GetLastDisplacement( globalRegResults );
+
+	this->SetMeshToGobalRegistrationResult( finalParameters );
+}
+
+/** A method that takes a transformation (generally from the global
+ * registration) and calculates and each point in the mesh image what
+ * the pure translation is of that point. */
+void SetMeshToGobalRegistrationResult(RegistrationParametersType GlobalRegistrationResult )
+{
+	for ( unsigned int i = 0; i < this->m_DataImage->GetNumberOfPoints(); ++i ){
+		double *currentPoint= new double[3];
+		this->m_DataImage->GetPoints()->GetPoint( i, currentPoint );
+		typename TransformType::InputPointType inPoint;
+		inPoint[0] = *currentPoint;
+		inPoint[1] = *(currentPoint+1);
+		inPoint[2] = *(currentPoint+2);
+		
+		this->GetRegistrationMethod()->GetTransform()->SetParameters( GlobalRegistrationResult );
+		typename TransformType::OutputPointType outPoint = this->GetRegistrationMethod()->GetTransform()->TransformPoint( inPoint );
+		
+		double *currentData = new double[3];
+		*currentData = outPoint[0]-inPoint[0];
+		*(currentData+1) = outPoint[1]-inPoint[1];
+		*(currentData+2) = outPoint[2]-inPoint[2];	
+		this->m_DataImage->GetPointData()->GetArray("Displacement")->SetTuple( i , currentData );
+	}
 	
-	msg.str("");
-	msg << "Global registration finished.\n Resulting displacement: ("<<globalRegResults[0]<<
-		", "<<globalRegResults[1]<<", "<<globalRegResults[2]<<")"<<std::endl<<std::endl;
-	this->WriteToLogfile( msg.str() );
-	
-	this->SetMeshInitialValue( globalRegResults );
 }
 
 /** A function to set the downsample value used by the global
@@ -1397,7 +1455,7 @@ unsigned int GetGlobalRegistrationDownsampleValue()
  * replaced by the ReplaceBadDisplacementPixels method. */
 void SetDisplacementErrorTolerance(double tolerance)
 {
-	this->m_displacementErrorToleranceErrorTolerance = tolerance;
+	this->m_displacementErrorTolerance = tolerance;
 }
 
 /** A function to get the error tolerance in units of standard 
@@ -1415,7 +1473,7 @@ double GetDisplacementErrorTollerance()
  * replaced by the ReplaceBadStrainPixels method. */
 void SetStrainErrorTolerance(double tolerance)
 {
-	this->m_strainErrorToleranceErrorTolerance = tolerance;
+	this->m_strainErrorTolerance = tolerance;
 }
 
 /** A function to get the error tolerance in units of standard 
